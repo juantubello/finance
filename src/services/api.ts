@@ -7,7 +7,9 @@ import type {
   GastoCreateRequest,
 } from "@/types/api";
 
-const BASE = "http://localhost:6097";
+// En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
+// En prod: configurar Nginx para hacer el mismo proxy
+const BASE = "/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
@@ -19,6 +21,28 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** Normalize a raw category object regardless of field naming convention */
+function normalizeCategory(c: any): CategoryResponse {
+  const id = c.id ?? c.categoryId ?? c.category_id ?? null;
+  return {
+    id,
+    name: c.name || c.category || c.categoryName || c.label || `Cat ${id}`,
+    description: c.description || c.categoryDescription || null,
+    icon: c.icon || c.categoryIcon || c.emoji || c.image || null,
+  };
+}
+
+/** Normalize a raw currency object regardless of field naming convention */
+function normalizeCurrency(c: any): CurrencyResponse {
+  return {
+    id: c.id,
+    // Accept: name | currency | currencyName | label | code
+    name: c.name || c.currency || c.currencyName || c.label || c.code || `Currency ${c.id}`,
+    // Accept: symbol | currencySymbol | sign | code
+    symbol: c.symbol || c.currencySymbol || c.sign || c.code || "?",
+  };
+}
+
 export const api = {
   getGastos: (year: number, month: number) =>
     request<GastoResponse[]>(`/gastos?year=${year}&month=${month}`),
@@ -26,8 +50,21 @@ export const api = {
   getGasto: (id: number) =>
     request<GastoResponse>(`/gastos/${id}`),
 
-  getGastosByCategories: (year: number, month: number) =>
-    request<GastosByCategoryResponse[]>(`/gastosByCategories?year=${year}&month=${month}`),
+  getGastosByCategories: async (year: number, month: number): Promise<GastosByCategoryResponse[]> => {
+    const raw = await request<any[]>(`/gastosByCategories?year=${year}&month=${month}`);
+    console.log("[API /gastosByCategories raw]:", raw);
+    return raw.map((c: any) => ({
+      // categoryId: accept categoryId | id | category_id
+      categoryId: c.categoryId ?? c.id ?? c.category_id ?? null,
+      categoryName: c.categoryName || c.name || c.category || `Cat ${c.categoryId ?? c.id}`,
+      categoryDescription: c.categoryDescription || c.description || null,
+      categoryIcon: c.categoryIcon || c.icon || c.emoji || null,
+      amount: c.amount ?? 0,
+      currencyId: c.currencyId ?? c.currency_id ?? null,
+      currency: c.currency || c.currencyName || c.name || "",
+      currencySymbol: c.currencySymbol || c.symbol || "",
+    }));
+  },
 
   getGastosByCategoryRange: (yf: number, mf: number, yt: number, mt: number) =>
     request<GastosByCategoryRangeResponse>(
@@ -43,7 +80,15 @@ export const api = {
   deleteGasto: (id: number) =>
     request<void>(`/gastos/${id}`, { method: "DELETE" }),
 
-  getCategories: () => request<CategoryResponse[]>("/categories"),
+  getCategories: async (): Promise<CategoryResponse[]> => {
+    const raw = await request<any[]>("/categories");
+    console.log("[API /categories raw]:", raw);
+    return raw.map(normalizeCategory);
+  },
 
-  getCurrencies: () => request<CurrencyResponse[]>("/currencies"),
+  getCurrencies: async (): Promise<CurrencyResponse[]> => {
+    const raw = await request<any[]>("/currencies");
+    console.log("[API /currencies raw]:", raw);
+    return raw.map(normalizeCurrency);
+  },
 };

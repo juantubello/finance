@@ -1,12 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { GastoCreateRequest } from "@/types/api";
+import type { GastoCreateRequest, GastosByCategoryResponse } from "@/types/api";
 
 export function useGastos(year: number, month: number) {
   return useQuery({
     queryKey: ["gastos", year, month],
     queryFn: () => api.getGastos(year, month),
   });
+}
+
+export function useGastosForYear(year: number) {
+  const results = useQueries({
+    queries: Array.from({ length: 12 }, (_, i) => ({
+      queryKey: ["gastos", year, i + 1],
+      queryFn: () => api.getGastos(year, i + 1),
+    })),
+  });
+  const isLoading = results.some((r) => r.isLoading);
+  const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
+  return { data, isLoading };
 }
 
 export function useGastosByCategories(year: number, month: number) {
@@ -16,10 +28,35 @@ export function useGastosByCategories(year: number, month: number) {
   });
 }
 
+export function useGastosByCategoriesForYear(year: number) {
+  const results = useQueries({
+    queries: Array.from({ length: 12 }, (_, i) => ({
+      queryKey: ["gastosByCategories", year, i + 1],
+      queryFn: () => api.getGastosByCategories(year, i + 1),
+    })),
+  });
+  const isLoading = results.some((r) => r.isLoading);
+  if (isLoading) return { data: undefined as GastosByCategoryResponse[] | undefined, isLoading: true };
+
+  const allCats = results.flatMap((r) => r.data ?? []);
+  const map = new Map<string, GastosByCategoryResponse>();
+  for (const cat of allCats) {
+    const key = `${cat.categoryId}-${cat.currencyId}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.amount += cat.amount;
+    } else {
+      map.set(key, { ...cat });
+    }
+  }
+  return { data: Array.from(map.values()), isLoading: false };
+}
+
 export function useCategories() {
   return useQuery({
     queryKey: ["categories"],
     queryFn: api.getCategories,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -27,6 +64,7 @@ export function useCurrencies() {
   return useQuery({
     queryKey: ["currencies"],
     queryFn: api.getCurrencies,
+    staleTime: 5 * 60 * 1000,
   });
 }
 

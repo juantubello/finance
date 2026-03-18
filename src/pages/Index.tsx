@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
-import { useGastos, useGastosByCategories } from "@/hooks/useApi";
-import MonthSelector from "@/components/MonthSelector";
-import CategoryCard from "@/components/CategoryCard";
+import {
+  useGastos,
+  useGastosForYear,
+  useGastosByCategories,
+  useGastosByCategoriesForYear,
+} from "@/hooks/useApi";
+import DateFilter, { type FilterMode } from "@/components/DateFilter";
+import CategoryBarChart from "@/components/CategoryBarChart";
 import ExpenseRow from "@/components/ExpenseRow";
 import ExpenseModal from "@/components/ExpenseModal";
 import SkeletonList from "@/components/SkeletonList";
@@ -11,31 +16,78 @@ import { Search } from "lucide-react";
 const now = new Date();
 
 export default function Index() {
+  const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  // Use indices instead of categoryIds — works regardless of API field naming
+  const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: gastos, isLoading: loadingGastos, error: errorGastos } = useGastos(year, month);
-  const { data: categories, isLoading: loadingCats } = useGastosByCategories(year, month);
+  const monthQuery = useGastos(
+    filterMode === "month" ? year : 0,
+    filterMode === "month" ? month : 0,
+  );
+  const yearQuery = useGastosForYear(filterMode === "year" ? year : 0);
+  const monthCatQuery = useGastosByCategories(
+    filterMode === "month" ? year : 0,
+    filterMode === "month" ? month : 0,
+  );
+  const yearCatQuery = useGastosByCategoriesForYear(filterMode === "year" ? year : 0);
+
+  const gastos = filterMode === "month" ? monthQuery.data : yearQuery.data;
+  const loadingGastos = filterMode === "month" ? monthQuery.isLoading : yearQuery.isLoading;
+  const errorGastos = filterMode === "month" ? monthQuery.error : null;
+  const categories = filterMode === "month" ? monthCatQuery.data : yearCatQuery.data;
+  const loadingCats = filterMode === "month" ? monthCatQuery.isLoading : yearCatQuery.isLoading;
+
+  // Build set of active category names/IDs from selected indices
+  const activeCategories = useMemo(() => {
+    if (!categories || activeIndices.length === 0) return null;
+    return activeIndices
+      .map((i) => categories[i])
+      .filter(Boolean)
+      .map((c) => ({
+        // Match by categoryId if available, otherwise by name
+        id: c.categoryId,
+        name: c.categoryName,
+      }));
+  }, [categories, activeIndices]);
 
   const filtered = useMemo(() => {
     if (!gastos) return [];
     let list = gastos;
-    if (activeCategoryId !== null) {
-      list = list.filter((g) => g.categoryId === activeCategoryId);
+    if (activeCategories && activeCategories.length > 0) {
+      list = list.filter((g) => {
+        // Try matching by categoryId first, fall back to category name
+        return activeCategories.some(
+          (ac) =>
+            (ac.id != null && g.categoryId != null && ac.id === g.categoryId) ||
+            (ac.name && g.category && ac.name === g.category)
+        );
+      });
     }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((g) => g.description.toLowerCase().includes(q));
     }
     return list;
-  }, [gastos, activeCategoryId, search]);
+  }, [gastos, activeCategories, search]);
 
-  // Group totals by currency
   const totalsByCurrency = useMemo(() => {
+    if (!gastos) return [];
+    const map = new Map<string, { symbol: string; total: number }>();
+    for (const g of gastos) {
+      const existing = map.get(g.currency) || { symbol: g.currencySymbol, total: 0 };
+      existing.total += g.amount;
+      map.set(g.currency, existing);
+    }
+    return Array.from(map.values());
+  }, [gastos]);
+
+  const selectedSum = useMemo(() => {
+    if (!activeCategories || activeCategories.length === 0 || !gastos) return null;
     const map = new Map<string, { symbol: string; total: number }>();
     for (const g of filtered) {
       const existing = map.get(g.currency) || { symbol: g.currencySymbol, total: 0 };
@@ -43,67 +95,95 @@ export default function Index() {
       map.set(g.currency, existing);
     }
     return Array.from(map.values());
-  }, [filtered]);
-
-  // Category totals for percentage calc (per currency — use first currency for simplicity)
-  const catTotal = useMemo(() => {
-    if (!categories) return 0;
-    return categories.reduce((s, c) => s + c.amount, 0);
-  }, [categories]);
+  }, [filtered, activeCategories, gastos]);
 
   const openEdit = (g: GastoResponse) => {
     setEditGasto(g);
     setModalOpen(true);
   };
 
+  const handleDateChange = (y: number, m: number) => {
+    setYear(y);
+    setMonth(m);
+    setActiveIndices([]);
+  };
+
+  const handleModeChange = (mode: FilterMode) => {
+    setFilterMode(mode);
+    setActiveIndices([]);
+  };
+
+  const handleCategorySelect = (index: number) => {
+    setActiveIndices((prev) =>
+      prev.includes(index) ? prev.filter((x) => x !== index) : [...prev, index]
+    );
+  };
+
   return (
     <div className="pb-24 max-w-lg mx-auto">
-      {/* Month selector */}
-      <div className="pt-6 pb-4 px-5">
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); setActiveCategoryId(null); }} />
-      </div>
+      <DateFilter
+        mode={filterMode}
+        year={year}
+        month={month}
+        onModeChange={handleModeChange}
+        onChange={handleDateChange}
+      />
 
       {/* Totals */}
-      <div className="px-5 mb-4">
+      <div className="px-5 mb-4 flex flex-col items-center text-center">
         {loadingGastos ? (
-          <div className="h-10 w-40 bg-secondary rounded-lg animate-pulse" />
-        ) : totalsByCurrency.length > 0 ? (
-          <div className="space-y-1">
-            {totalsByCurrency.map((t) => (
-              <div key={t.symbol} className="flex items-baseline gap-1">
-                <span className="text-xs text-muted-foreground">Total</span>
-                <span className="text-3xl font-bold tracking-tighter tabular text-foreground">
-                  {t.symbol} {t.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            ))}
+          <div className="space-y-2">
+            <div className="h-4 w-12 bg-secondary rounded animate-pulse mx-auto" />
+            <div className="h-12 w-52 bg-secondary rounded-lg animate-pulse mx-auto" />
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No hay gastos este mes</p>
-        )}
+        ) : totalsByCurrency.length > 0 ? (
+          totalsByCurrency.map((t) => (
+            <div key={t.symbol}>
+              <p className="text-xs text-muted-foreground mb-0.5">Total</p>
+              <div className="flex items-baseline gap-1.5 justify-center">
+                <span className="text-4xl font-bold tracking-tighter tabular text-foreground">
+                  {t.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+                </span>
+                <span className="text-xl font-semibold text-muted-foreground">{t.symbol}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 justify-center">
+                <span className="inline-flex items-center px-3 py-1 rounded-full bg-foreground text-background text-xs font-semibold tabular">
+                  - {t.symbol}{t.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </span>
+                {selectedSum && selectedSum.map((s) => (
+                  <span key={s.symbol} className="inline-flex items-center px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
+                    Selec: {s.symbol}{s.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : !loadingGastos ? (
+          <p className="text-sm text-muted-foreground">No hay gastos este período</p>
+        ) : null}
       </div>
 
-      {/* Category cards */}
+      {/* Category bar chart */}
       {loadingCats ? (
-        <div className="flex gap-3 px-5 overflow-hidden">
-          {[1,2,3].map(i => <div key={i} className="w-28 h-24 bg-secondary rounded-2xl animate-pulse flex-shrink-0" />)}
-        </div>
-      ) : categories && categories.length > 0 && (
-        <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-4">
-          {categories.map((c) => (
-            <CategoryCard
-              key={`${c.categoryId}-${c.currencyId}`}
-              cat={c}
-              total={catTotal}
-              isActive={activeCategoryId === c.categoryId}
-              onClick={() => setActiveCategoryId(activeCategoryId === c.categoryId ? null : c.categoryId)}
-            />
+        <div className="flex gap-3 px-5 overflow-hidden mb-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex flex-col items-center gap-1 flex-shrink-0 w-[72px]">
+              <div className="w-14 rounded-2xl bg-secondary animate-pulse" style={{ height: 130 }} />
+              <div className="h-3 w-10 bg-secondary rounded animate-pulse" />
+              <div className="h-2 w-6 bg-secondary rounded animate-pulse" />
+            </div>
           ))}
         </div>
-      )}
+      ) : categories && categories.length > 0 ? (
+        <CategoryBarChart
+          categories={categories}
+          activeIndices={activeIndices}
+          onSelect={handleCategorySelect}
+        />
+      ) : null}
 
-      {/* Search filter */}
-      <div className="px-5 mb-2 mt-2">
+      {/* Search */}
+      <div className="px-5 mb-2 mt-3">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -130,13 +210,17 @@ export default function Index() {
           ))}
           {filtered.length === 0 && (
             <p className="text-center text-sm text-muted-foreground py-12">
-              No hay gastos registrados. Tocá '+' para empezar.
+              {activeCategories ? "No hay gastos en las categorías seleccionadas." : "No hay gastos registrados. Tocá '+' para empezar."}
             </p>
           )}
         </div>
       )}
 
-      <ExpenseModal open={modalOpen} onClose={() => { setModalOpen(false); setEditGasto(null); }} gasto={editGasto} />
+      <ExpenseModal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditGasto(null); }}
+        gasto={editGasto}
+      />
     </div>
   );
 }

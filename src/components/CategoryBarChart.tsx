@@ -1,0 +1,71 @@
+import type { GastosByCategoryResponse } from "@/types/api";
+
+const BAR_COLORS = [
+  "#c8f0b0", "#ffc8c8", "#d0d0d0", "#b8d8ff",
+  "#ffe8a0", "#e0c0ff", "#b0f0e0", "#ffd4a0",
+];
+
+function formatAmount(amount: number): string {
+  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${Math.round(amount / 1_000)}K`;
+  return String(Math.round(amount));
+}
+
+interface Props {
+  categories: GastosByCategoryResponse[];
+  // Use indices so selection works even when categoryId is null/inconsistent
+  activeIndices: number[];
+  onSelect: (index: number) => void;
+}
+
+const BAR_MAX_H = 130;
+
+export default function CategoryBarChart({ categories, activeIndices, onSelect }: Props) {
+  if (!categories.length) return null;
+
+  const max = Math.max(...categories.map((c) => c.amount));
+  const total = categories.reduce((s, c) => s + c.amount, 0);
+  const hasSelection = activeIndices.length > 0;
+
+  return (
+    <div className="flex gap-2 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
+      {categories.map((cat, i) => {
+        const pct = total > 0 ? Math.round((cat.amount / total) * 100) : 0;
+        const barH = max > 0 ? Math.max(28, Math.round((cat.amount / max) * BAR_MAX_H)) : 28;
+        const color = BAR_COLORS[i % BAR_COLORS.length];
+        const isActive = activeIndices.includes(i);
+        const isDimmed = hasSelection && !isActive;
+
+        return (
+          <button
+            key={i}
+            onClick={() => onSelect(i)}
+            className={`flex flex-col items-center flex-shrink-0 w-[72px] focus:outline-none transition-opacity ${
+              isDimmed ? "opacity-40" : "opacity-100"
+            }`}
+          >
+            <div
+              className={`w-14 rounded-2xl border-2 border-dashed flex items-end justify-center relative overflow-hidden transition-all ${
+                isActive ? "border-primary" : "border-border"
+              }`}
+              style={{ height: BAR_MAX_H }}
+            >
+              <div
+                className="w-full rounded-2xl flex items-center justify-center transition-all duration-500"
+                style={{ height: barH, backgroundColor: color }}
+              >
+                {cat.categoryIcon && (
+                  <span className="text-xl leading-none">{cat.categoryIcon}</span>
+                )}
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-foreground mt-1 tabular">
+              {formatAmount(cat.amount)}
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular">{pct}%</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
