@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Menu, Settings } from "lucide-react";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -14,9 +14,11 @@ interface Props {
   month: number;
   onModeChange: (mode: FilterMode) => void;
   onChange: (year: number, month: number) => void;
+  onMenu?: () => void;
+  onSettings?: () => void;
 }
 
-export default function DateFilter({ mode, year, month, onModeChange, onChange }: Props) {
+export default function DateFilter({ mode, year, month, onModeChange, onChange, onMenu, onSettings }: Props) {
   const [openPicker, setOpenPicker] = useState<"month" | "year" | null>(null);
   const [pickerYear, setPickerYear] = useState(year);
   const ref = useRef<HTMLDivElement>(null);
@@ -79,7 +81,16 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange }
   };
 
   return (
-    <div className="flex items-center gap-2 pt-5 pb-3 px-5" ref={ref}>
+    <div className="flex items-center gap-2 pt-5 pb-3 px-3" ref={ref}>
+      {onMenu && (
+        <button
+          onClick={onMenu}
+          className="p-2 rounded-full hover:bg-secondary transition-colors flex-shrink-0"
+          aria-label="Menú"
+        >
+          <Menu size={20} className="text-foreground" />
+        </button>
+      )}
 
       {/* ── Year pill ── */}
       <div className="relative flex items-center gap-0.5">
@@ -214,6 +225,15 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange }
           </div>
         )}
       </div>
+      {onSettings && (
+        <button
+          onClick={onSettings}
+          className="p-2 rounded-full hover:bg-secondary transition-colors flex-shrink-0 ml-auto"
+          aria-label="Configuración"
+        >
+          <Settings size={20} className="text-foreground" />
+        </button>
+      )}
     </div>
   );
 }

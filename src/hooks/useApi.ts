@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { GastoCreateRequest, GastosByCategoryResponse } from "@/types/api";
+import type { GastoCreateRequest, GastosByCategoryResponse, CategoryCreateRequest } from "@/types/api";
 
 export function useGastos(year: number, month: number) {
   return useQuery({
@@ -98,5 +98,30 @@ export function useDeleteGasto() {
       qc.invalidateQueries({ queryKey: ["gastos"] });
       qc.invalidateQueries({ queryKey: ["gastosByCategories"] });
     },
+  });
+}
+
+export function useCreateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CategoryCreateRequest) => api.createCategory(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
+  });
+}
+
+export function useUpdateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: CategoryCreateRequest }) =>
+      api.updateCategory(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
+  });
+}
+
+export function useDeleteCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCategory(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
   });
 }

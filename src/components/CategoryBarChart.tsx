@@ -1,6 +1,6 @@
 import type { GastosByCategoryResponse } from "@/types/api";
 
-const BAR_COLORS = [
+export const BAR_COLORS = [
   "#c8f0b0", "#ffc8c8", "#d0d0d0", "#b8d8ff",
   "#ffe8a0", "#e0c0ff", "#b0f0e0", "#ffd4a0",
 ];
@@ -18,7 +18,7 @@ interface Props {
   onSelect: (index: number) => void;
 }
 
-const BAR_MAX_H = 130;
+const BAR_MAX_H = 175;
 
 export default function CategoryBarChart({ categories, activeIndices, onSelect }: Props) {
   if (!categories.length) return null;
@@ -28,7 +28,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
   const hasSelection = activeIndices.length > 0;
 
   return (
-    <div className="flex gap-2 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
+    <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
       {categories.map((cat, i) => {
         const pct = total > 0 ? Math.round((cat.amount / total) * 100) : 0;
         const barH = max > 0 ? Math.max(28, Math.round((cat.amount / max) * BAR_MAX_H)) : 28;
@@ -40,12 +40,12 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
           <button
             key={i}
             onClick={() => onSelect(i)}
-            className={`flex flex-col items-center flex-shrink-0 w-[72px] focus:outline-none transition-opacity ${
+            className={`flex flex-col items-center flex-shrink-0 w-[88px] focus:outline-none transition-opacity ${
               isDimmed ? "opacity-40" : "opacity-100"
             }`}
           >
             <div
-              className={`w-14 rounded-2xl border-2 border-dashed flex items-end justify-center relative overflow-hidden transition-all ${
+              className={`w-[68px] rounded-2xl border-2 border-dashed flex items-end justify-center relative overflow-hidden transition-all ${
                 isActive ? "border-primary" : "border-border"
               }`}
               style={{ height: BAR_MAX_H }}

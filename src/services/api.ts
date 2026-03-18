@@ -5,6 +5,7 @@ import type {
   CategoryResponse,
   CurrencyResponse,
   GastoCreateRequest,
+  CategoryCreateRequest,
 } from "@/types/api";
 
 // En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
@@ -91,4 +92,13 @@ export const api = {
     console.log("[API /currencies raw]:", raw);
     return raw.map(normalizeCurrency);
   },
+
+  createCategory: (data: CategoryCreateRequest) =>
+    request<CategoryResponse>("/categories", { method: "POST", body: JSON.stringify(data) }),
+
+  updateCategory: (id: number, data: CategoryCreateRequest) =>
+    request<CategoryResponse>(`/categories/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteCategory: (id: number) =>
+    request<void>(`/categories/${id}`, { method: "DELETE" }),
 };

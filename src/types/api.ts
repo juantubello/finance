@@ -53,3 +53,9 @@ export interface GastoCreateRequest {
   categoryId: number | null;
   currencyId: number;
 }
+
+export interface CategoryCreateRequest {
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+}

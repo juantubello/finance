@@ -4,6 +4,8 @@ import type { GastoResponse } from "@/types/api";
 import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto } from "@/hooks/useApi";
 import { parseVoiceInput, parseAmountOnly } from "@/lib/voiceParser";
 
+type EntryType = "gasto" | "ingreso";
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export default function ExpenseModal({ open, onClose, gasto }: Props) {
+  const [entryType, setEntryType] = useState<EntryType>("gasto");
   const { data: categories = [], isLoading: loadingCats, error: errorCats } = useCategories();
   const { data: currencies = [], isLoading: loadingCurrencies, error: errorCurrencies } = useCurrencies();
   const createMut = useCreateGasto();
@@ -60,6 +63,7 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
       setDateTime(new Date().toISOString().slice(0, 10));
     }
     setError(null);
+    if (!gasto) setEntryType("gasto");
   }, [gasto, open]);
 
   // Set default currency once loaded
@@ -205,14 +209,40 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
       <div className="relative w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl shadow-card animate-slide-up p-6 pb-8 max-h-[90vh] overflow-y-auto">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-foreground">
-            {gasto ? "Editar Gasto" : "Nuevo Gasto"}
+            {gasto ? "Editar" : "Nuevo"}
           </h2>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-secondary transition-colors">
             <X size={20} className="text-muted-foreground" />
           </button>
         </div>
+
+        {/* Expense / Income toggle */}
+        {!gasto && (
+          <div className="flex gap-2 mb-5">
+            <button
+              onClick={() => setEntryType("gasto")}
+              className={`flex-1 h-10 rounded-2xl text-sm font-semibold transition-all ${
+                entryType === "gasto"
+                  ? "bg-[#ff5c4d] text-white shadow-sm"
+                  : "bg-secondary text-muted-foreground"
+              }`}
+            >
+              — Egreso
+            </button>
+            <button
+              onClick={() => setEntryType("ingreso")}
+              className={`flex-1 h-10 rounded-2xl text-sm font-semibold transition-all ${
+                entryType === "ingreso"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "bg-secondary text-muted-foreground"
+              }`}
+            >
+              + Ingreso
+            </button>
+          </div>
+        )}
 
         {/* Date */}
         <div className="mb-4">
@@ -356,14 +386,23 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
               <Trash2 size={18} />
             </button>
           )}
-          <button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isLoading && <Loader2 size={16} className="animate-spin" />}
-            {isLoading ? "Guardando..." : gasto ? "Guardar Cambios" : "Guardar"}
-          </button>
+          {entryType === "ingreso" && !gasto ? (
+            <button
+              disabled
+              className="flex-1 h-12 rounded-2xl bg-emerald-500/30 text-emerald-700 font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed"
+            >
+              Próximamente
+            </button>
+          ) : (
+            <button
+              onClick={handleSave}
+              disabled={isLoading}
+              className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoading && <Loader2 size={16} className="animate-spin" />}
+              {isLoading ? "Guardando..." : gasto ? "Guardar Cambios" : "Guardar"}
+            </button>
+          )}
         </div>
       </div>
     </div>
