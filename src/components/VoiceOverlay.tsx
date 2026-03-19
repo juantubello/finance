@@ -7,6 +7,11 @@ interface Props {
   onConfirm: (transcript: string) => void;
 }
 
+/** Convert US comma-thousands "11,000" → Argentine dot-thousands "11.000" for display */
+function normalizeDisplay(text: string): string {
+  return text.replace(/\b(\d{1,3})(,\d{3})+\b/g, (m) => m.replace(/,/g, "."));
+}
+
 export default function VoiceOverlay({ open, onCancel, onConfirm }: Props) {
   const [displayText, setDisplayText] = useState("");
   const [isListening, setIsListening] = useState(false);
@@ -111,7 +116,7 @@ export default function VoiceOverlay({ open, onCancel, onConfirm }: Props) {
       <div className="flex-1 flex flex-col items-center justify-center px-10 w-full">
         {displayText ? (
           <p className="text-white text-2xl font-semibold text-center leading-snug drop-shadow">
-            {displayText}
+            {normalizeDisplay(displayText)}
           </p>
         ) : isListening ? (
           <div className="flex flex-col items-center gap-4">

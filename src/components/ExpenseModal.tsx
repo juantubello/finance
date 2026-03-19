@@ -4,8 +4,9 @@ import type { GastoResponse } from "@/types/api";
 import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto } from "@/hooks/useApi";
 import { parseVoiceInput, parseAmountOnly } from "@/lib/voiceParser";
 import VoiceOverlay from "@/components/VoiceOverlay";
+import { detectCategoryFromDescription } from "@/lib/categoryRules";
 
-type EntryType = "gasto" | "ingreso";
+type EntryType = "gasto" | "ingreso" | "ahorro";
 type VoiceTarget = "description" | "amount" | null;
 
 /** Parse an Argentine-formatted string ("1.500,50") or plain ("1500.5") to a number */
@@ -45,6 +46,7 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [voiceTarget, setVoiceTarget] = useState<VoiceTarget>(null);
   const [amountFocused, setAmountFocused] = useState(false);
+  const [autoCategoryKeyword, setAutoCategoryKeyword] = useState<string | null>(null);
 
   useEffect(() => {
     if (gasto) {
@@ -61,8 +63,23 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
       setDateTime(new Date().toISOString().slice(0, 10));
     }
     setError(null);
+    setAutoCategoryKeyword(null);
     if (!gasto) setEntryType("gasto");
   }, [gasto, open]);
+
+  // Auto-detect category from description when creating a new gasto
+  useEffect(() => {
+    if (gasto) return;
+    const match = detectCategoryFromDescription(description);
+    if (match !== null) {
+      setCategoryId(match.categoryId);
+      setAutoCategoryKeyword(match.keyword);
+    } else if (autoCategoryKeyword !== null) {
+      setCategoryId(null);
+      setAutoCategoryKeyword(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [description]);
 
   useEffect(() => {
     if (!gasto && currencies.length > 0 && currencyId === null) {
@@ -152,11 +169,11 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
             </button>
           </div>
 
-          {/* Expense / Income toggle */}
+          {/* Type toggle */}
           {!gasto && (
-            <div className="flex gap-2 mb-5">
+            <div className="flex gap-1.5 mb-5">
               <button
-                onClick={() => setEntryType("gasto")}
+                onClick={() => { setEntryType("gasto"); setCategoryId(null); setAutoCategoryKeyword(null); }}
                 className={`flex-1 h-10 rounded-2xl text-sm font-semibold transition-all ${
                   entryType === "gasto"
                     ? "bg-[#ff5c4d] text-white shadow-sm"
@@ -166,7 +183,7 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
                 — Egreso
               </button>
               <button
-                onClick={() => setEntryType("ingreso")}
+                onClick={() => { setEntryType("ingreso"); setCategoryId(null); setAutoCategoryKeyword(null); }}
                 className={`flex-1 h-10 rounded-2xl text-sm font-semibold transition-all ${
                   entryType === "ingreso"
                     ? "bg-emerald-500 text-white shadow-sm"
@@ -174,6 +191,16 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
                 }`}
               >
                 + Ingreso
+              </button>
+              <button
+                onClick={() => { setEntryType("ahorro"); setCategoryId(null); setAutoCategoryKeyword(null); }}
+                className={`flex-1 h-10 rounded-2xl text-sm font-semibold transition-all ${
+                  entryType === "ahorro"
+                    ? "bg-blue-500 text-white shadow-sm"
+                    : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                🐷 Ahorro
               </button>
             </div>
           )}
@@ -270,9 +297,16 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
             )}
           </div>
 
-          {/* Category */}
-          <div className="mb-6">
-            <label className="text-xs font-medium text-muted-foreground mb-2 block">Categoría</label>
+          {/* Category — only for gastos */}
+          <div className={`mb-6 transition-opacity duration-200 ${entryType !== "gasto" ? "opacity-30 pointer-events-none select-none" : ""}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <label className="text-xs font-medium text-muted-foreground">Categoría</label>
+              {autoCategoryKeyword && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                  ✨ auto: "{autoCategoryKeyword}"
+                </span>
+              )}
+            </div>
             {loadingCats ? (
               <div className="flex items-center gap-2">
                 <Loader2 size={14} className="animate-spin text-muted-foreground" />
@@ -287,7 +321,7 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
                 {categories.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => setCategoryId(c.id != null && categoryId === c.id ? null : c.id)}
+                    onClick={() => { setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                       c.id != null && categoryId === c.id
                         ? "bg-primary text-primary-foreground shadow-subtle"
@@ -319,10 +353,14 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
                 <Trash2 size={18} />
               </button>
             )}
-            {entryType === "ingreso" && !gasto ? (
+            {(entryType === "ingreso" || entryType === "ahorro") && !gasto ? (
               <button
                 disabled
-                className="flex-1 h-12 rounded-2xl bg-emerald-500/30 text-emerald-700 font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed"
+                className={`flex-1 h-12 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed ${
+                  entryType === "ahorro"
+                    ? "bg-blue-500/30 text-blue-700"
+                    : "bg-emerald-500/30 text-emerald-700"
+                }`}
               >
                 Próximamente
               </button>

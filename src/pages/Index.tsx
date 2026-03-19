@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   useGastos,
   useGastosForYear,
@@ -6,12 +6,11 @@ import {
   useGastosByCategoriesForYear,
 } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
-import CategoryBarChart from "@/components/CategoryBarChart";
+import CategoryBarChart, { BAR_COLORS } from "@/components/CategoryBarChart";
 import ExpenseRow from "@/components/ExpenseRow";
 import SkeletonList from "@/components/SkeletonList";
 import type { GastoResponse } from "@/types/api";
-import { Search, BarChart2, List } from "lucide-react";
-import { BAR_COLORS } from "@/components/CategoryBarChart";
+import { Search, BarChart2, List, ChevronDown } from "lucide-react";
 
 const now = new Date();
 type ViewMode = "gastos" | "ingresos";
@@ -30,6 +29,9 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("gastos");
   const [showChart, setShowChart] = useState(true);
+  const [selectedCurrencyId, setSelectedCurrencyId] = useState<number | null>(null);
+  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
+  const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
   const monthQuery = useGastos(
     filterMode === "month" ? year : 0,
@@ -42,11 +44,59 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   );
   const yearCatQuery = useGastosByCategoriesForYear(filterMode === "year" ? year : 0);
 
-  const gastos = filterMode === "month" ? monthQuery.data : yearQuery.data;
+  const allGastos = filterMode === "month" ? monthQuery.data : yearQuery.data;
   const loadingGastos = filterMode === "month" ? monthQuery.isLoading : yearQuery.isLoading;
   const errorGastos = filterMode === "month" ? monthQuery.error : null;
-  const categories = filterMode === "month" ? monthCatQuery.data : yearCatQuery.data;
+  const allCategories = filterMode === "month" ? monthCatQuery.data : yearCatQuery.data;
   const loadingCats = filterMode === "month" ? monthCatQuery.isLoading : yearCatQuery.isLoading;
+
+  // Currencies present in the current period's expenses
+  const availableCurrencies = useMemo(() => {
+    if (!allGastos) return [];
+    const map = new Map<number, { id: number; symbol: string; name: string }>();
+    for (const g of allGastos) {
+      if (!map.has(g.currencyId)) {
+        map.set(g.currencyId, { id: g.currencyId, symbol: g.currencySymbol, name: g.currency });
+      }
+    }
+    return Array.from(map.values());
+  }, [allGastos]);
+
+  // Auto-select first currency (ARS) when data loads or period changes
+  useEffect(() => {
+    if (availableCurrencies.length > 0) {
+      const stillValid = selectedCurrencyId !== null &&
+        availableCurrencies.some(c => c.id === selectedCurrencyId);
+      if (!stillValid) setSelectedCurrencyId(availableCurrencies[0].id);
+    }
+  }, [availableCurrencies]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(e.target as Node)) {
+        setCurrencyDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectedCurrency = availableCurrencies.find(c => c.id === selectedCurrencyId);
+
+  // Filter gastos by selected currency
+  const gastos = useMemo(() => {
+    if (!allGastos) return undefined;
+    if (selectedCurrencyId === null) return allGastos;
+    return allGastos.filter(g => g.currencyId === selectedCurrencyId);
+  }, [allGastos, selectedCurrencyId]);
+
+  // Filter categories by selected currency
+  const categories = useMemo(() => {
+    if (!allCategories) return undefined;
+    if (selectedCurrencyId === null) return allCategories;
+    return allCategories.filter(c => c.currencyId === selectedCurrencyId);
+  }, [allCategories, selectedCurrencyId]);
 
   const activeCategories = useMemo(() => {
     if (!categories || activeIndices.length === 0) return null;
@@ -75,18 +125,18 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
     return list;
   }, [gastos, activeCategories, search]);
 
-  const totalsByCurrency = useMemo(() => {
-    if (!gastos) return [];
-    const map = new Map<string, { symbol: string; total: number }>();
-    for (const g of gastos) {
-      const existing = map.get(g.currency) || { symbol: g.currencySymbol, total: 0 };
-      existing.total += g.amount;
-      map.set(g.currency, existing);
-    }
-    return Array.from(map.values());
-  }, [gastos]);
+  const total = useMemo(() => {
+    if (!gastos || gastos.length === 0) return null;
+    const total = gastos.reduce((s, g) => s + g.amount, 0);
+    return { symbol: selectedCurrency?.symbol ?? "", total };
+  }, [gastos, selectedCurrency]);
 
-  // Map categoryId (or name as fallback) → chart bar color
+  const selectedSum = useMemo(() => {
+    if (!activeCategories || activeCategories.length === 0 || !gastos) return null;
+    return filtered.reduce((s, g) => s + g.amount, 0);
+  }, [filtered, activeCategories, gastos]);
+
+  // Map categoryId/name → bar color
   const categoryColorMap = useMemo(() => {
     const map = new Map<string, string>();
     if (categories) {
@@ -98,17 +148,6 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
     }
     return map;
   }, [categories]);
-
-  const selectedSum = useMemo(() => {
-    if (!activeCategories || activeCategories.length === 0 || !gastos) return null;
-    const map = new Map<string, { symbol: string; total: number }>();
-    for (const g of filtered) {
-      const existing = map.get(g.currency) || { symbol: g.currencySymbol, total: 0 };
-      existing.total += g.amount;
-      map.set(g.currency, existing);
-    }
-    return Array.from(map.values());
-  }, [filtered, activeCategories, gastos]);
 
   const handleDateChange = (y: number, m: number) => {
     setYear(y); setMonth(m); setActiveIndices([]);
@@ -147,45 +186,67 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
               <div className="h-10 w-48 bg-secondary rounded-lg animate-pulse mx-auto" />
               <div className="h-7 w-44 bg-secondary rounded-full animate-pulse mx-auto mt-1" />
             </div>
-          ) : totalsByCurrency.length > 0 ? (
-            totalsByCurrency.map((t) => (
-              <div key={t.symbol}>
-                <p className="text-xs text-muted-foreground mb-0.5">Total</p>
-                <div className="flex items-baseline gap-1.5 justify-center">
-                  <span className="text-4xl font-bold tracking-tighter tabular text-foreground">
-                    {t.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
-                  </span>
-                  <span className="text-xl font-semibold text-muted-foreground">{t.symbol}</span>
-                </div>
-                <div className="mt-2 flex gap-2 justify-center">
+          ) : total ? (
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">Total</p>
+              <div className="flex items-baseline gap-1.5 justify-center">
+                <span className="text-4xl font-bold tracking-tighter tabular text-foreground">
+                  {total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+                </span>
+                {/* Currency selector button */}
+                <div className="relative flex-shrink-0" ref={currencyDropdownRef}>
                   <button
-                    onClick={() => setViewMode("gastos")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                      viewMode === "gastos"
-                        ? "bg-[#ff5c4d] text-white shadow-sm"
-                        : "bg-secondary text-muted-foreground"
-                    }`}
+                    onClick={() => setCurrencyDropdownOpen((v) => !v)}
+                    className="flex items-center gap-0.5 px-2 py-1 rounded-xl bg-secondary hover:bg-muted transition-colors"
                   >
-                    — {t.symbol}{t.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    <span className="text-sm font-bold text-foreground">{selectedCurrency?.name ?? selectedCurrency?.symbol ?? "—"}</span>
+                    <ChevronDown size={11} className="text-muted-foreground" />
                   </button>
-                  <button
-                    onClick={() => setViewMode("ingresos")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                      viewMode === "ingresos"
-                        ? "bg-emerald-500 text-white shadow-sm"
-                        : "bg-secondary text-muted-foreground"
-                    }`}
-                  >
-                    + Ingresos
-                  </button>
+                  {currencyDropdownOpen && (
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 min-w-[130px]">
+                      {availableCurrencies.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => { setSelectedCurrencyId(c.id); setCurrencyDropdownOpen(false); setActiveIndices([]); }}
+                          className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors hover:bg-secondary ${
+                            c.id === selectedCurrencyId ? "text-primary font-semibold" : "text-foreground"
+                          }`}
+                        >
+                          {c.symbol} — {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {selectedSum && viewMode === "gastos" && selectedSum.map((s) => (
-                  <span key={s.symbol} className="inline-flex items-center mt-1.5 px-3 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
-                    Selec: {s.symbol}{s.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                  </span>
-                ))}
               </div>
-            ))
+              <div className="mt-2 flex gap-2 justify-center">
+                <button
+                  onClick={() => setViewMode("gastos")}
+                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                    viewMode === "gastos"
+                      ? "bg-[#ff5c4d] text-white shadow-sm"
+                      : "bg-secondary text-muted-foreground"
+                  }`}
+                >
+                  — {total.symbol}{total.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </button>
+                <button
+                  onClick={() => setViewMode("ingresos")}
+                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                    viewMode === "ingresos"
+                      ? "bg-emerald-500 text-white shadow-sm"
+                      : "bg-secondary text-muted-foreground"
+                  }`}
+                >
+                  + Ingresos
+                </button>
+              </div>
+              {selectedSum !== null && viewMode === "gastos" && (
+                <span className="inline-flex items-center mt-1.5 px-3 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
+                  Selec: {total.symbol}{selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
           ) : !loadingGastos ? (
             <div>
               <p className="text-sm text-muted-foreground mb-2">No hay datos este período</p>
@@ -195,29 +256,21 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                     viewMode === "gastos" ? "bg-[#ff5c4d] text-white shadow-sm" : "bg-secondary text-muted-foreground"
                   }`}
-                >
-                  — Gastos
-                </button>
+                >— Gastos</button>
                 <button
                   onClick={() => setViewMode("ingresos")}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                     viewMode === "ingresos" ? "bg-emerald-500 text-white shadow-sm" : "bg-secondary text-muted-foreground"
                   }`}
-                >
-                  + Ingresos
-                </button>
+                >+ Ingresos</button>
               </div>
             </div>
           ) : null}
         </div>
 
-        {/* Chart section */}
+        {/* Collapsible chart */}
         {viewMode === "gastos" && (
-          <div
-            className={`grid transition-[grid-template-rows] duration-400 ease-in-out ${
-              showChart ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-            }`}
-          >
+          <div className={`grid transition-[grid-template-rows] duration-400 ease-in-out ${showChart ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden min-h-0">
               {loadingCats ? (
                 <div className="flex gap-4 px-5 pb-2">
@@ -230,17 +283,13 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
                   ))}
                 </div>
               ) : categories && categories.length > 0 ? (
-                <CategoryBarChart
-                  categories={categories}
-                  activeIndices={activeIndices}
-                  onSelect={handleCategorySelect}
-                />
+                <CategoryBarChart categories={categories} activeIndices={activeIndices} onSelect={handleCategorySelect} />
               ) : null}
             </div>
           </div>
         )}
 
-        {/* Chart / List toggle + Search row */}
+        {/* Search + currency selector + chart toggle */}
         {viewMode === "gastos" && (
           <div className="flex items-center gap-2 px-5 py-2">
             {/* Search */}
@@ -254,16 +303,14 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
                 className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
               />
             </div>
-            {/* Toggle button — only show when there's a chart */}
+
+            {/* Chart toggle */}
             {hasChart && (
               <button
                 onClick={() => setShowChart((v) => !v)}
-                className={`flex-shrink-0 flex items-center gap-1 h-9 px-3 rounded-xl text-xs font-medium transition-all ${
-                  showChart
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground hover:bg-muted"
+                className={`flex-shrink-0 flex items-center h-9 px-3 rounded-xl text-xs font-medium transition-all ${
+                  showChart ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-muted"
                 }`}
-                title={showChart ? "Ocultar gráfico" : "Mostrar gráfico"}
               >
                 {showChart ? <List size={14} /> : <BarChart2 size={14} />}
               </button>
