@@ -35,10 +35,11 @@ function normalizeCategory(c: any): CategoryResponse {
 
 /** Normalize a raw currency object regardless of field naming convention */
 function normalizeCurrency(c: any): CurrencyResponse {
+  const id = c.id ?? c.currencyId ?? c.currency_id ?? null;
   return {
-    id: c.id,
+    id,
     // Accept: name | currency | currencyName | label | code
-    name: c.name || c.currency || c.currencyName || c.label || c.code || `Currency ${c.id}`,
+    name: c.name || c.currency || c.currencyName || c.label || c.code || `Currency ${id}`,
     // Accept: symbol | currencySymbol | sign | code
     symbol: c.symbol || c.currencySymbol || c.sign || c.code || "?",
   };

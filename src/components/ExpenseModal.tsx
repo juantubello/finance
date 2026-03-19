@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, Mic, Trash2, Loader2, Check, ChevronDown } from "lucide-react";
 import type { GastoResponse } from "@/types/api";
 import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto } from "@/hooks/useApi";
@@ -35,6 +36,11 @@ interface Props {
 }
 
 export default function ExpenseModal({ open, onClose, gasto, initialData }: Props) {
+  if (!open) return null;
+  return <ExpenseModalInner onClose={onClose} gasto={gasto} initialData={initialData} />;
+}
+
+function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">) {
   const [entryType, setEntryType] = useState<EntryType>("gasto");
   const { data: categories = [], isLoading: loadingCats } = useCategories();
   const { data: currencies = [], isLoading: loadingCurrencies } = useCurrencies();
@@ -45,7 +51,13 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
   const [description, setDescription] = useState(gasto?.description ?? initialData?.description ?? "");
   const [amount, setAmount] = useState(gasto ? String(gasto.amount) : initialData?.amount ? String(initialData.amount) : "");
   const [categoryId, setCategoryId] = useState<number | null>(gasto?.categoryId ?? null);
-  const [currencyId, setCurrencyId] = useState<number | null>(gasto?.currencyId != null ? Number(gasto.currencyId) : null);
+  const [currencyId, setCurrencyId] = useState<number | null>(
+    gasto?.currencyId != null ? Number(gasto.currencyId) : (currencies[0]?.id ?? null)
+  );
+  // Handles the case where currencies finish loading after mount
+  useEffect(() => {
+    if (currencyId === null && currencies.length > 0) setCurrencyId(currencies[0].id);
+  }, [currencies, currencyId]);
   const [dateTime, setDateTime] = useState(gasto ? gasto.dateTime.slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -54,8 +66,11 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
 
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const currencyBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (gasto) return;
@@ -70,23 +85,25 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [description]);
 
-  // Only fires when currencies load after mount; if we already have a valid id, leave it alone
-  useEffect(() => {
-    if (currencyId === null && currencies.length > 0) {
-      setCurrencyId(currencies[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currencies]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
         setShowDatePicker(false);
       }
+      setCurrencyDropdownOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const openCurrencyDropdown = () => {
+    if (currencyBtnRef.current) {
+      const r = currencyBtnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: r.bottom + 6, left: r.left });
+    }
+    setCurrencyDropdownOpen(v => !v);
+  };
 
   const selectedCurrency = currencies.find(c => Number(c.id) === Number(currencyId));
 
@@ -148,8 +165,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
       setError("Error al eliminar.");
     }
   };
-
-  if (!open) return null;
 
   const isLoading = createMut.isPending || updateMut.isPending || deleteMut.isPending;
 
@@ -226,20 +241,41 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
                 </>
               )}
 
-              {/* Currency — native select styled as pill */}
+              {/* Currency dropdown */}
               {!loadingCurrencies && currencies.length > 0 && (
-                <div className="relative">
-                  <select
-                    value={currencyId ?? ""}
-                    onChange={(e) => setCurrencyId(Number(e.target.value))}
-                    className="appearance-none pl-3 pr-6 py-1.5 rounded-full bg-secondary hover:bg-muted transition-colors text-xs font-semibold text-foreground outline-none cursor-pointer"
+                <>
+                  <button
+                    ref={currencyBtnRef}
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); openCurrencyDropdown(); }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-secondary hover:bg-muted transition-colors text-xs font-semibold text-foreground"
                   >
-                    {currencies.map(c => (
-                      <option key={c.id} value={c.id}>{c.symbol} — {c.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                </div>
+                    {selectedCurrency ? `${selectedCurrency.symbol} ${selectedCurrency.name}` : "Moneda"}
+                    <ChevronDown size={10} className="text-muted-foreground" />
+                  </button>
+                  {currencyDropdownOpen && createPortal(
+                    <div
+                      style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+                      className="bg-card border border-border rounded-2xl shadow-lg py-1 min-w-[160px]"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {currencies.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setCurrencyId(c.id); setCurrencyDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium hover:bg-secondary transition-colors text-left ${
+                            Number(c.id) === Number(currencyId) ? "text-primary font-semibold" : "text-foreground"
+                          }`}
+                        >
+                          {c.symbol} — {c.name}
+                        </button>
+                      ))}
+                    </div>,
+                    document.body
+                  )}
+                </>
               )}
             </div>
 
