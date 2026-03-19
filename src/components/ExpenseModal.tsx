@@ -28,9 +28,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   gasto?: GastoResponse | null;
+  initialData?: { description?: string; amount?: number } | null;
 }
 
-export default function ExpenseModal({ open, onClose, gasto }: Props) {
+export default function ExpenseModal({ open, onClose, gasto, initialData }: Props) {
   const [entryType, setEntryType] = useState<EntryType>("gasto");
   const { data: categories = [], isLoading: loadingCats, error: errorCats } = useCategories();
   const { data: currencies = [], isLoading: loadingCurrencies, error: errorCurrencies } = useCurrencies();
@@ -56,8 +57,8 @@ export default function ExpenseModal({ open, onClose, gasto }: Props) {
       setCurrencyId(gasto.currencyId);
       setDateTime(gasto.dateTime.slice(0, 10));
     } else {
-      setDescription("");
-      setAmount("");
+      setDescription(initialData?.description ?? "");
+      setAmount(initialData?.amount ? String(initialData.amount) : "");
       setCategoryId(null);
       setCurrencyId(currencies.length > 0 ? currencies[0].id : null);
       setDateTime(new Date().toISOString().slice(0, 10));

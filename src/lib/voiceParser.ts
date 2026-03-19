@@ -49,6 +49,58 @@ function wordsToNumber(words: string[]): number | null {
  * Key strategy: detect "mil" / "millones" as multiplier words FIRST,
  * then find any numeric value (digits or words) and apply the multiplier.
  */
+/** Parse a single digit token into a number (handles dot/comma thousands). Returns null if not a number. */
+function extractDigitNumber(token: string): number | null {
+  if (!/^\d/.test(token)) return null;
+  let n: number;
+  if (/^\d{1,3}(,\d{3})+$/.test(token)) {
+    n = parseFloat(token.replace(/,/g, ""));
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(token)) {
+    n = parseFloat(token.replace(/\./g, ""));
+  } else {
+    n = parseFloat(token.replace(",", "."));
+  }
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Detects multiple [description][amount] pairs in a single transcript and sums them.
+ * e.g. "arnaldo 1300 empanadas 12340 y coca cola 1200"
+ *   → { totalAmount: 14840, description: "arnaldo + empanadas + coca cola" }
+ * Returns null if fewer than 2 items with amounts are found.
+ */
+export function parseMultipleItems(
+  transcript: string,
+): { totalAmount: number; description: string } | null {
+  const tokens = transcript.toLowerCase().trim().split(/\s+/);
+  const SKIP = new Set(["y", "e", "mas", "más"]);
+
+  const items: { desc: string; amount: number }[] = [];
+  let descWords: string[] = [];
+
+  for (const token of tokens) {
+    if (SKIP.has(token)) continue;
+    const n = extractDigitNumber(token);
+    if (n !== null && n > 0) {
+      items.push({ desc: descWords.join(" ").trim(), amount: n });
+      descWords = [];
+    } else {
+      descWords.push(token);
+    }
+  }
+
+  const valid = items.filter((i) => i.amount > 0);
+  if (valid.length < 2) return null;
+
+  return {
+    totalAmount: valid.reduce((s, i) => s + i.amount, 0),
+    description: valid
+      .map((i) => i.desc)
+      .filter(Boolean)
+      .join(" + "),
+  };
+}
+
 export function parseAmountOnly(transcript: string): number | null {
   const s = transcript.toLowerCase().trim();
   console.log("[Voice Amount STT]:", s);
