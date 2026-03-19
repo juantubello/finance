@@ -42,11 +42,11 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
   const updateMut = useUpdateGasto();
   const deleteMut = useDeleteGasto();
 
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [currencyId, setCurrencyId] = useState<number | null>(null);
-  const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 10));
+  const [description, setDescription] = useState(gasto?.description ?? initialData?.description ?? "");
+  const [amount, setAmount] = useState(gasto ? String(gasto.amount) : initialData?.amount ? String(initialData.amount) : "");
+  const [categoryId, setCategoryId] = useState<number | null>(gasto?.categoryId ?? null);
+  const [currencyId, setCurrencyId] = useState<number | null>(gasto?.currencyId != null ? Number(gasto.currencyId) : null);
+  const [dateTime, setDateTime] = useState(gasto ? gasto.dateTime.slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [amountFocused, setAmountFocused] = useState(false);
@@ -54,33 +54,8 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
 
   const datePickerRef = useRef<HTMLDivElement>(null);
-  const currencyRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (gasto) {
-      setDescription(gasto.description);
-      setAmount(String(gasto.amount));
-      setCategoryId(gasto.categoryId);
-      setCurrencyId(gasto.currencyId);
-      setDateTime(gasto.dateTime.slice(0, 10));
-    } else {
-      setDescription(initialData?.description ?? "");
-      setAmount(initialData?.amount ? String(initialData.amount) : "");
-      setCategoryId(null);
-      setCurrencyId(currencies.length > 0 ? currencies[0].id : null);
-      setDateTime(new Date().toISOString().slice(0, 10));
-    }
-    setError(null);
-    setAutoCategoryKeyword(null);
-    setTags([]);
-    setTagInput("");
-    setShowDatePicker(false);
-    setCurrencyDropdownOpen(false);
-    if (!gasto) setEntryType("gasto");
-  }, [gasto, open]);
 
   useEffect(() => {
     if (gasto) return;
@@ -95,30 +70,28 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [description]);
 
+  // Only fires when currencies load after mount; if we already have a valid id, leave it alone
   useEffect(() => {
-    if (!gasto && currencies.length > 0 && currencyId === null) {
+    if (currencyId === null && currencies.length > 0) {
       setCurrencyId(currencies[0].id);
     }
-  }, [currencies, gasto, currencyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currencies]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
         setShowDatePicker(false);
       }
-      if (currencyRef.current && !currencyRef.current.contains(e.target as Node)) {
-        setCurrencyDropdownOpen(false);
-      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const selectedCurrency = currencies.find(c => c.id === currencyId);
+  const selectedCurrency = currencies.find(c => Number(c.id) === Number(currencyId));
 
   const handleVoiceConfirm = (transcript: string) => {
     setVoiceOpen(false);
-    // Try multi-item first ("2800 en arnaldo y 6500 en carrefour" → sums amounts)
     const multi = parseMultipleItems(transcript);
     if (multi) {
       setDescription(multi.description);
@@ -253,40 +226,31 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
                 </>
               )}
 
-              {/* Currency pill */}
+              {/* Currency — native select styled as pill */}
               {!loadingCurrencies && currencies.length > 0 && (
-                <div className="relative" ref={currencyRef}>
-                  <button
-                    onClick={() => currencies.length > 1 && setCurrencyDropdownOpen(v => !v)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-secondary hover:bg-muted transition-colors text-xs font-semibold text-foreground"
+                <div className="relative">
+                  <select
+                    value={currencyId ?? ""}
+                    onChange={(e) => setCurrencyId(Number(e.target.value))}
+                    className="appearance-none pl-3 pr-6 py-1.5 rounded-full bg-secondary hover:bg-muted transition-colors text-xs font-semibold text-foreground outline-none cursor-pointer"
                   >
-                    {selectedCurrency?.symbol ?? "—"}
-                    {currencies.length > 1 && <ChevronDown size={10} className="text-muted-foreground" />}
-                  </button>
-                  {currencyDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1.5 z-20 bg-card border border-border rounded-2xl shadow-lg py-1 min-w-[140px]">
-                      {currencies.map(c => (
-                        <button
-                          key={c.id}
-                          onClick={() => { setCurrencyId(c.id); setCurrencyDropdownOpen(false); }}
-                          className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium hover:bg-secondary transition-colors ${c.id === currencyId ? "text-primary font-semibold" : "text-foreground"}`}
-                        >
-                          {c.symbol} — {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                    {currencies.map(c => (
+                      <option key={c.id} value={c.id}>{c.symbol} — {c.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 </div>
               )}
             </div>
 
             {/* Description — large title */}
-            <input
-              type="text"
+            <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="¿En qué gastaste?"
-              className="w-full text-[1.65rem] font-bold leading-tight text-foreground bg-transparent outline-none placeholder:text-muted-foreground/30 mb-4"
+              rows={1}
+              className="w-full text-[1.35rem] font-bold leading-snug text-foreground bg-transparent outline-none placeholder:text-muted-foreground/30 mb-4 resize-none overflow-hidden"
+              style={{ fieldSizing: "content" } as React.CSSProperties}
             />
 
             {/* Amount row */}
@@ -367,7 +331,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
 
             {/* Tags row — always visible */}
             <div>
-              {/* Existing tag pills */}
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {tags.map((tag, i) => (
@@ -384,7 +347,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
                 </div>
               )}
 
-              {/* Tag input — always visible */}
               <div className="flex items-center gap-2 h-9 px-3 rounded-xl bg-secondary focus-within:ring-2 focus-within:ring-primary/30 transition-all">
                 <span className="text-xs font-bold text-muted-foreground select-none">#</span>
                 <input
@@ -403,7 +365,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
 
             {/* Action row */}
             <div className="flex items-center gap-2">
-              {/* Delete (edit mode) */}
               {gasto && (
                 <button
                   onClick={handleDelete}
@@ -414,7 +375,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
                 </button>
               )}
 
-              {/* Single voice button */}
               <button
                 onClick={() => setVoiceOpen(true)}
                 className="h-11 w-11 rounded-2xl bg-secondary flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
@@ -422,7 +382,6 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
                 <Mic size={17} />
               </button>
 
-              {/* Save */}
               {(entryType === "ingreso" || entryType === "ahorro") && !gasto ? (
                 <button
                   disabled

@@ -29,6 +29,7 @@ export default function PageShell({ onMenu, onSettings, children }: Props) {
       </div>
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {children(year, month, filterMode)}
+        <div className="h-20" />
       </div>
     </div>
   );

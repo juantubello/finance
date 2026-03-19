@@ -30,6 +30,7 @@ function AppLayout() {
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalKey, setModalKey] = useState(0);
   const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
   const [initialData, setInitialData] = useState<{ description?: string; amount?: number } | null>(null);
   const [voiceAddOpen, setVoiceAddOpen] = useState(false);
@@ -41,8 +42,8 @@ function AppLayout() {
     applyTheme(theme);
   }, [theme]);
 
-  const openAdd = () => { setEditGasto(null); setInitialData(null); setModalOpen(true); };
-  const openEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setModalOpen(true); };
+  const openAdd = () => { setEditGasto(null); setInitialData(null); setModalKey(k => k + 1); setModalOpen(true); };
+  const openEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setModalKey(k => k + 1); setModalOpen(true); };
   const closeModal = () => { setModalOpen(false); setEditGasto(null); setInitialData(null); };
   const openMenu = () => setSideMenuOpen(true);
   const openSettings = () => setSettingsOpen(true);
@@ -60,6 +61,7 @@ function AppLayout() {
       });
     }
     setEditGasto(null);
+    setModalKey(k => k + 1);
     setModalOpen(true);
   };
 
@@ -81,7 +83,7 @@ function AppLayout() {
         onConfirm={handleVoiceAddConfirm}
       />
       <FloatingActionButton onAdd={openAdd} onVoice={() => setVoiceAddOpen(true)} />
-      <ExpenseModal open={modalOpen} onClose={closeModal} gasto={editGasto} initialData={initialData} />
+      <ExpenseModal key={modalKey} open={modalOpen} onClose={closeModal} gasto={editGasto} initialData={initialData} />
     </>
   );
 }
