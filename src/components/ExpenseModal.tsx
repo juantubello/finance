@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { X, Mic, Trash2, Loader2, Check, ChevronDown } from "lucide-react";
 import type { GastoResponse } from "@/types/api";
-import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto } from "@/hooks/useApi";
+import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto, useLabels, useCategoryRules } from "@/hooks/useApi";
 import { parseVoiceInput, parseMultipleItems } from "@/lib/voiceParser";
 import VoiceOverlay from "@/components/VoiceOverlay";
 import { detectCategoryFromDescription } from "@/lib/categoryRules";
+import { api } from "@/services/api";
 
 type EntryType = "gasto" | "ingreso" | "ahorro";
 
@@ -42,8 +44,11 @@ export default function ExpenseModal({ open, onClose, gasto, initialData }: Prop
 
 function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">) {
   const [entryType, setEntryType] = useState<EntryType>("gasto");
+  const queryClient = useQueryClient();
   const { data: categories = [], isLoading: loadingCats } = useCategories();
   const { data: currencies = [], isLoading: loadingCurrencies } = useCurrencies();
+  const { data: allLabels = [] } = useLabels();
+  const { data: categoryRules = [] } = useCategoryRules();
   const createMut = useCreateGasto();
   const updateMut = useUpdateGasto();
   const deleteMut = useDeleteGasto();
@@ -63,9 +68,11 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [amountFocused, setAmountFocused] = useState(false);
   const [autoCategoryKeyword, setAutoCategoryKeyword] = useState<string | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(gasto?.labels?.map(l => l.name) ?? []);
+  const [savedLabels] = useState<{ id: number; name: string }[]>(gasto?.labels ?? []);
   const [tagInput, setTagInput] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
 
@@ -74,7 +81,7 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
 
   useEffect(() => {
     if (gasto) return;
-    const match = detectCategoryFromDescription(description);
+    const match = detectCategoryFromDescription(description, categoryRules);
     if (match !== null) {
       setCategoryId(match.categoryId);
       setAutoCategoryKeyword(match.keyword);
@@ -127,7 +134,16 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
   };
   const removeTag = (i: number) => setTags(prev => prev.filter((_, idx) => idx !== i));
 
+  const [saving, setSaving] = useState(false);
+
+  const withTimeout = <T,>(promise: Promise<T>, ms = 12000): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+    ]);
+
   const handleSave = async () => {
+    if (saving) return;
     if (!description.trim() || !amount) {
       setError("Completá descripción y monto");
       return;
@@ -137,6 +153,7 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
       return;
     }
     setError(null);
+    setSaving(true);
     const payload = {
       dateTime: new Date(dateTime + "T12:00:00").toISOString(),
       description: description.trim(),
@@ -146,13 +163,19 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
     };
     try {
       if (gasto) {
-        await updateMut.mutateAsync({ id: gasto.id, data: payload });
+        await withTimeout(updateMut.mutateAsync({ id: gasto.id, data: payload }));
+        const removedLabels = savedLabels.filter(l => !tags.includes(l.name));
+        await withTimeout(Promise.all(removedLabels.map(l => api.removeGastoLabel(gasto.id, l.id))));
+        if (tags.length > 0) await withTimeout(api.addGastoLabels(gasto.id, tags));
       } else {
-        await createMut.mutateAsync(payload);
+        const savedGasto = await withTimeout(createMut.mutateAsync(payload));
+        if (tags.length > 0) await withTimeout(api.addGastoLabels(savedGasto.id, tags));
       }
+      await queryClient.invalidateQueries({ queryKey: ["gastos"] });
       onClose();
-    } catch {
-      setError("Error al guardar. Intentá de nuevo.");
+    } catch (e: any) {
+      setError(e?.message === "timeout" ? "La operación tardó demasiado. Intentá de nuevo." : "Error al guardar. Intentá de nuevo.");
+      setSaving(false);
     }
   };
 
@@ -166,7 +189,7 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
     }
   };
 
-  const isLoading = createMut.isPending || updateMut.isPending || deleteMut.isPending;
+  const isLoading = saving || deleteMut.isPending;
 
   const typeColor = entryType === "gasto"
     ? "bg-[#ff5c4d] text-white"
@@ -397,18 +420,61 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
                   className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
+              {tagInput.length > 0 && (() => {
+                const suggestions = allLabels.filter(l =>
+                  l.name.includes(tagInput.toLowerCase()) && !tags.includes(l.name)
+                );
+                return suggestions.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {suggestions.map(l => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (!tags.includes(l.name)) setTags(prev => [...prev, l.name]);
+                          setTagInput("");
+                        }}
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary hover:bg-primary/25 transition-colors"
+                      >
+                        #{l.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             {/* Action row */}
             <div className="flex items-center gap-2">
-              {gasto && (
+              {gasto && !confirmDelete && (
                 <button
-                  onClick={handleDelete}
+                  onClick={() => setConfirmDelete(true)}
                   disabled={isLoading}
                   className="h-11 w-11 rounded-2xl bg-red-50 dark:bg-red-950/30 text-red-500 flex items-center justify-center hover:bg-red-100 transition-colors disabled:opacity-50 flex-shrink-0"
                 >
                   <Trash2 size={16} />
                 </button>
+              )}
+              {gasto && confirmDelete && (
+                <div className="flex items-center gap-1.5 px-3 h-11 rounded-2xl bg-red-50 dark:bg-red-950/30 flex-shrink-0">
+                  <span className="text-xs font-semibold text-red-500 whitespace-nowrap">¿Eliminar?</span>
+                  <button
+                    onClick={handleDelete}
+                    disabled={isLoading}
+                    className="h-7 px-2.5 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {isLoading ? <Loader2 size={11} className="animate-spin" /> : null}
+                    Sí
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={isLoading}
+                    className="h-7 px-2.5 rounded-xl bg-transparent text-red-400 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
               )}
 
               <button

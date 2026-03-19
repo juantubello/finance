@@ -4,16 +4,82 @@ import {
   useGastosForYear,
   useGastosByCategories,
   useGastosByCategoriesForYear,
+  useLabels,
+  useCategories,
 } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
-import CategoryBarChart, { BAR_COLORS } from "@/components/CategoryBarChart";
+import CategoryBarChart from "@/components/CategoryBarChart";
 import ExpenseRow from "@/components/ExpenseRow";
 import SkeletonList from "@/components/SkeletonList";
 import type { GastoResponse } from "@/types/api";
-import { Search, BarChart2, List, ChevronDown } from "lucide-react";
+import { Search, BarChart2, List, ChevronDown, X, Plus, SlidersHorizontal } from "lucide-react";
+import type { Label } from "@/types/api";
 
 const now = new Date();
 type ViewMode = "gastos" | "ingresos";
+
+function LabelInput({ allLabels, labelFilters, onToggle }: {
+  allLabels: Label[];
+  labelFilters: string[];
+  onToggle: (name: string) => void;
+}) {
+  const [input, setInput] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const suggestions = allLabels.filter(
+    l => !labelFilters.includes(l.name) && l.name.toLowerCase().includes(input.toLowerCase())
+  );
+
+  const commit = (name: string) => {
+    const clean = name.replace(/^#+/, "").trim();
+    if (clean) onToggle(clean);
+    setInput("");
+    setShowSuggestions(false);
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex gap-1.5">
+        <div className="relative flex-1 flex items-center bg-background rounded-xl">
+          <span className="pl-3 text-xs font-semibold text-muted-foreground select-none">#</span>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit(input);
+              if (e.key === "Escape") setShowSuggestions(false);
+            }}
+            placeholder="Agregar etiqueta..."
+            className="flex-1 h-8 pr-3 bg-transparent text-foreground text-xs outline-none placeholder:text-muted-foreground/40"
+          />
+        </div>
+        <button
+          onClick={() => commit(input)}
+          disabled={!input.trim()}
+          className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 max-h-40 overflow-y-auto">
+          {suggestions.map(l => (
+            <button
+              key={l.id}
+              onMouseDown={() => commit(l.name)}
+              className="w-full text-left px-4 py-2 text-xs text-foreground hover:bg-secondary transition-colors"
+            >
+              #{l.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   onEditGasto: (g: GastoResponse) => void;
@@ -27,11 +93,29 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [search, setSearch] = useState("");
+  const [labelFilters, setLabelFilters] = useState<string[]>([]);
+  const [descFilters, setDescFilters] = useState<string[]>([]);
+  const [descInput, setDescInput] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("gastos");
   const [showChart, setShowChart] = useState(true);
   const [selectedCurrencyId, setSelectedCurrencyId] = useState<number | null>(null);
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
   const currencyDropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: allLabels = [] } = useLabels();
+  const { data: categoryDefs = [] } = useCategories();
+
+  // categoryId → hex color from the canonical categories list
+  const categoryColorMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of categoryDefs) {
+      if (c.id != null && c.color) map.set(c.id, c.color);
+    }
+    return map;
+  }, [categoryDefs]);
 
   const monthQuery = useGastos(
     filterMode === "month" ? year : 0,
@@ -84,19 +168,29 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
 
   const selectedCurrency = availableCurrencies.find(c => c.id === selectedCurrencyId);
 
-  // Filter gastos by selected currency
+  // Filter gastos by selected currency and enrich with color from categoryDefs
   const gastos = useMemo(() => {
     if (!allGastos) return undefined;
-    if (selectedCurrencyId === null) return allGastos;
-    return allGastos.filter(g => g.currencyId === selectedCurrencyId);
-  }, [allGastos, selectedCurrencyId]);
+    const filtered = selectedCurrencyId === null
+      ? allGastos
+      : allGastos.filter(g => g.currencyId === selectedCurrencyId);
+    return filtered.map(g => ({
+      ...g,
+      categoryColor: g.categoryColor ?? (g.categoryId != null ? categoryColorMap.get(g.categoryId) ?? null : null),
+    }));
+  }, [allGastos, selectedCurrencyId, categoryColorMap]);
 
-  // Filter categories by selected currency
+  // Filter categories by selected currency and enrich with color from categoryDefs
   const categories = useMemo(() => {
     if (!allCategories) return undefined;
-    if (selectedCurrencyId === null) return allCategories;
-    return allCategories.filter(c => c.currencyId === selectedCurrencyId);
-  }, [allCategories, selectedCurrencyId]);
+    const filtered = selectedCurrencyId === null
+      ? allCategories
+      : allCategories.filter(c => c.currencyId === selectedCurrencyId);
+    return filtered.map(c => ({
+      ...c,
+      categoryColor: c.categoryColor ?? categoryColorMap.get(c.categoryId) ?? null,
+    }));
+  }, [allCategories, selectedCurrencyId, categoryColorMap]);
 
   const activeCategories = useMemo(() => {
     if (!categories || activeIndices.length === 0) return null;
@@ -105,6 +199,10 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
       .filter(Boolean)
       .map((c) => ({ id: c.categoryId, name: c.categoryName }));
   }, [categories, activeIndices]);
+
+  const hasAdvancedFilter = labelFilters.length > 0 ||
+    descFilters.some(d => d.trim()) ||
+    !!dateFrom || !!dateTo;
 
   const filtered = useMemo(() => {
     if (!gastos) return [];
@@ -122,14 +220,30 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
       const q = search.toLowerCase();
       list = list.filter((g) => g.description.toLowerCase().includes(q));
     }
+    if (labelFilters.length > 0) {
+      list = list.filter((g) => g.labels?.some(l => labelFilters.includes(l.name)));
+    }
+    if (descFilters.some(d => d.trim())) {
+      const terms = descFilters.map(d => d.trim().toLowerCase()).filter(Boolean);
+      list = list.filter((g) => terms.some(t => g.description.toLowerCase().includes(t)));
+    }
+    if (dateFrom) {
+      list = list.filter((g) => g.dateTime.slice(0, 10) >= dateFrom);
+    }
+    if (dateTo) {
+      list = list.filter((g) => g.dateTime.slice(0, 10) <= dateTo);
+    }
     return list;
-  }, [gastos, activeCategories, search]);
+  }, [gastos, activeCategories, search, labelFilters, descFilters, dateFrom, dateTo]);
 
   const total = useMemo(() => {
     if (!gastos || gastos.length === 0) return null;
-    const sum = gastos.reduce((s, g) => s + g.amount, 0);
+    const source = (hasAdvancedFilter || search.trim() || (activeCategories && activeCategories.length > 0))
+      ? filtered
+      : gastos;
+    const sum = source.reduce((s, g) => s + g.amount, 0);
     return { symbol: selectedCurrency?.symbol ?? "", total: sum };
-  }, [gastos, selectedCurrency]);
+  }, [gastos, filtered, selectedCurrency, hasAdvancedFilter, search, activeCategories]);
 
   const selectedSum = useMemo(() => {
     if (!activeCategories || activeCategories.length === 0 || !gastos) return null;
@@ -137,17 +251,6 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   }, [filtered, activeCategories, gastos]);
 
   // Map categoryId/name → bar color
-  const categoryColorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    if (categories) {
-      categories.forEach((cat, i) => {
-        const color = BAR_COLORS[i % BAR_COLORS.length];
-        if (cat.categoryId != null) map.set(String(cat.categoryId), color);
-        map.set(cat.categoryName, color);
-      });
-    }
-    return map;
-  }, [categories]);
 
   const handleDateChange = (y: number, m: number) => {
     setYear(y); setMonth(m); setActiveIndices([]);
@@ -161,7 +264,41 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
     );
   };
 
+  const toggleLabel = (name: string) => {
+    setLabelFilters(prev =>
+      prev.includes(name) ? prev.filter(l => l !== name) : [...prev, name]
+    );
+  };
+
+  const addDescFilter = () => {
+    const val = descInput.trim();
+    if (val && !descFilters.includes(val)) {
+      setDescFilters(prev => [...prev, val]);
+    }
+    setDescInput("");
+  };
+
+  const removeDescFilter = (term: string) => {
+    setDescFilters(prev => prev.filter(d => d !== term));
+  };
+
+  const clearAllFilters = () => {
+    setLabelFilters([]);
+    setDescFilters([]);
+    setDescInput("");
+    setDateFrom("");
+    setDateTo("");
+  };
+
+
   const hasChart = viewMode === "gastos" && (loadingCats || (categories && categories.length > 0));
+
+  // Filtered total for the filter panel badge
+  const filteredTotal = useMemo(() => {
+    if (!hasAdvancedFilter) return null;
+    const sum = filtered.reduce((s, g) => s + g.amount, 0);
+    return { symbol: selectedCurrency?.symbol ?? "", total: sum, count: filtered.length };
+  }, [filtered, hasAdvancedFilter, selectedCurrency]);
 
   return (
     <div className="flex flex-col h-[100dvh] lg:flex-row lg:max-w-5xl lg:mx-auto">
@@ -280,6 +417,23 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
         {/* Search + currency filter + chart toggle */}
         {viewMode === "gastos" && (
           <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0">
+            {/* Filter toggle */}
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              className={`flex-shrink-0 relative flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs font-medium transition-all ${
+                showFilters || hasAdvancedFilter
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              <SlidersHorizontal size={14} />
+              {hasAdvancedFilter && (
+                <span className="text-[10px] font-bold">
+                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)}
+                </span>
+              )}
+            </button>
+
             {/* Search */}
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -325,12 +479,127 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
               <button
                 onClick={() => setShowChart((v) => !v)}
                 className={`flex-shrink-0 flex items-center h-9 px-3 rounded-xl text-xs font-medium transition-all ${
-                  showChart ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-muted"
+                  !showChart ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {showChart ? <List size={14} /> : <BarChart2 size={14} />}
               </button>
             )}
+
+          </div>
+        )}
+
+        {/* ── Filter panel ── */}
+        {viewMode === "gastos" && (
+          <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out flex-shrink-0 ${showFilters ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+            <div className="overflow-hidden min-h-0">
+              <div className="mx-5 mb-3 rounded-2xl bg-secondary/60 border border-border/40 overflow-hidden divide-y divide-border/40">
+
+                {/* Labels */}
+                <div className="px-4 py-3 space-y-2">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Etiquetas</p>
+                  {labelFilters.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {labelFilters.map(name => (
+                        <span
+                          key={name}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground"
+                        >
+                          #{name}
+                          <button onClick={() => toggleLabel(name)} className="opacity-70 hover:opacity-100">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <LabelInput allLabels={allLabels} labelFilters={labelFilters} onToggle={toggleLabel} />
+                </div>
+
+                {/* Description */}
+                <div className="px-4 py-3 space-y-2">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Descripción</p>
+                  {descFilters.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {descFilters.map(term => (
+                        <span
+                          key={term}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground"
+                        >
+                          {term}
+                          <button onClick={() => removeDescFilter(term)} className="opacity-70 hover:opacity-100">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={descInput}
+                      onChange={(e) => setDescInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") addDescFilter(); }}
+                      placeholder="Agregar palabra clave..."
+                      className="flex-1 h-8 px-3 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/40"
+                    />
+                    <button
+                      onClick={addDescFilter}
+                      disabled={!descInput.trim()}
+                      className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Date range */}
+                <div className="px-4 py-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fechas</p>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Desde</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="w-full h-8 px-2 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Hasta</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="w-full h-8 px-2 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filtered total + clear */}
+                {hasAdvancedFilter && filteredTotal && (
+                  <div className="flex items-center justify-between px-4 py-2.5">
+                    <span className="text-xs text-muted-foreground">
+                      {filteredTotal.count} resultado{filteredTotal.count !== 1 ? "s" : ""}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-foreground tabular">
+                        {filteredTotal.symbol}{filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </span>
+                      <button
+                        onClick={clearAllFilters}
+                        className="text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors px-2 py-0.5 rounded-full hover:bg-muted"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
           </div>
         )}
 
@@ -355,11 +624,6 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
                   key={g.id}
                   gasto={g}
                   onClick={() => onEditGasto(g)}
-                  categoryColor={
-                    g.categoryId != null
-                      ? categoryColorMap.get(String(g.categoryId))
-                      : categoryColorMap.get(g.category)
-                  }
                 />
               ))}
               {filtered.length === 0 && (

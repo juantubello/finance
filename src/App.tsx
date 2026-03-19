@@ -11,6 +11,7 @@ import VoiceOverlay from "@/components/VoiceOverlay";
 import Index from "./pages/Index";
 import AddExpense from "./pages/AddExpense";
 import Categories from "./pages/Categories";
+import CategoryRules from "./pages/CategoryRules";
 import Ahorros from "./pages/Ahorros";
 import Estadisticas from "./pages/Estadisticas";
 import NotFound from "./pages/NotFound";
@@ -73,6 +74,7 @@ function AppLayout() {
         <Route path="/" element={<Index onEditGasto={openEdit} onMenu={openMenu} onSettings={openSettings} />} />
         <Route path="/add" element={<AddExpense />} />
         <Route path="/categories" element={<Categories />} />
+        <Route path="/category-rules" element={<CategoryRules />} />
         <Route path="/ahorros" element={<Ahorros onMenu={openMenu} onSettings={openSettings} />} />
         <Route path="/estadisticas" element={<Estadisticas onMenu={openMenu} onSettings={openSettings} />} />
         <Route path="*" element={<NotFound />} />

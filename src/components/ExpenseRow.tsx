@@ -4,10 +4,10 @@ import type { GastoResponse } from "@/types/api";
 interface Props {
   gasto: GastoResponse;
   onClick: () => void;
-  categoryColor?: string;
 }
 
-export default function ExpenseRow({ gasto, onClick, categoryColor }: Props) {
+export default function ExpenseRow({ gasto, onClick }: Props) {
+  const categoryColor = gasto.categoryColor ?? "#e5e7eb";
   return (
     <button
       onClick={onClick}
@@ -22,7 +22,7 @@ export default function ExpenseRow({ gasto, onClick, categoryColor }: Props) {
             <span
               className="inline-block text-[9px] font-semibold px-1 py-px rounded-full mb-0.5"
               style={{
-                backgroundColor: categoryColor ?? "#e5e7eb",
+                backgroundColor: categoryColor,
                 color: "#374151",
               }}
             >
@@ -30,8 +30,15 @@ export default function ExpenseRow({ gasto, onClick, categoryColor }: Props) {
             </span>
           )}
           <div className="text-sm font-medium text-foreground truncate">{gasto.description}</div>
-          <div className="text-xs text-muted-foreground">
-            {format(new Date(gasto.dateTime), "dd/MM/yyyy")}
+          <div className="flex items-center gap-1 flex-wrap mt-0.5">
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(gasto.dateTime), "dd/MM/yyyy")}
+            </span>
+            {gasto.labels?.map(l => (
+              <span key={l.id} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                #{l.name}
+              </span>
+            ))}
           </div>
         </div>
       </div>

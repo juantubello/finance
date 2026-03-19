@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash } from "lucide-react";
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/useApi";
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryRules, useCreateCategoryRule, useDeleteCategoryRule } from "@/hooks/useApi";
 import type { CategoryResponse } from "@/types/api";
-import { loadRules, saveRules, type CategoryRule } from "@/lib/categoryRules";
 import type { Theme } from "@/App";
 
 type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm";
@@ -19,10 +18,18 @@ interface CategoryFormProps {
   onBack: () => void;
 }
 
+const COLOR_PALETTE = [
+  "#ef4444","#f97316","#eab308","#22c55e","#14b8a6",
+  "#3b82f6","#8b5cf6","#ec4899","#f43f5e","#06b6d4",
+  "#84cc16","#a855f7","#fb923c","#34d399","#60a5fa",
+  "#f472b6","#facc15","#4ade80","#38bdf8","#c084fc",
+];
+
 function CategoryForm({ category, onBack }: CategoryFormProps) {
   const [name, setName] = useState(category?.name ?? "");
   const [icon, setIcon] = useState(category?.icon ?? "");
   const [description, setDescription] = useState(category?.description ?? "");
+  const [color, setColor] = useState(category?.color ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const createMut = useCreateCategory();
@@ -32,7 +39,7 @@ function CategoryForm({ category, onBack }: CategoryFormProps) {
   const handleSave = async () => {
     if (!name.trim()) { setError("El nombre es obligatorio"); return; }
     setError(null);
-    const data = { name: name.trim(), icon: icon.trim() || null, description: description.trim() || null };
+    const data = { name: name.trim(), icon: icon.trim() || null, description: description.trim() || null, color: color || null };
     try {
       if (category?.id != null) {
         await updateMut.mutateAsync({ id: category.id, data });
@@ -56,6 +63,17 @@ function CategoryForm({ category, onBack }: CategoryFormProps) {
         </h3>
       </div>
 
+      {/* Preview */}
+      <div className="flex justify-center">
+        <div
+          className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl transition-colors"
+          style={{ backgroundColor: color || "var(--secondary)" }}
+        >
+          {icon || "📁"}
+        </div>
+      </div>
+
+      {/* Emoji input */}
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Ícono (emoji)</label>
         <input
@@ -66,6 +84,49 @@ function CategoryForm({ category, onBack }: CategoryFormProps) {
           className="w-full h-11 px-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all"
         />
       </div>
+
+      {/* Color palette */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-medium text-muted-foreground">Color</label>
+          {color && (
+            <button type="button" onClick={() => setColor("")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Quitar
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {COLOR_PALETTE.map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(c)}
+              className="w-9 h-9 rounded-full flex-shrink-0 transition-transform active:scale-90"
+              style={{
+                backgroundColor: c,
+                outline: color === c ? `3px solid ${c}` : "none",
+                outlineOffset: "3px",
+              }}
+            />
+          ))}
+          {/* Custom color */}
+          <div className="relative w-9 h-9 flex-shrink-0">
+            <input
+              type="color"
+              value={color || "#cccccc"}
+              onChange={e => setColor(e.target.value)}
+              className="absolute inset-0 w-full h-full rounded-full cursor-pointer opacity-0"
+            />
+            <div
+              className="w-9 h-9 rounded-full border-2 border-dashed border-border flex items-center justify-center text-xs text-muted-foreground pointer-events-none"
+              style={{ backgroundColor: color && !COLOR_PALETTE.includes(color) ? color : "transparent" }}
+            >
+              {!(color && !COLOR_PALETTE.includes(color)) && "…"}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
         <input
@@ -131,10 +192,15 @@ function CategoriesList({ onEdit, onAdd }: { onEdit: (c: CategoryResponse) => vo
       ) : categories.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-4">No hay categorías</p>
       ) : (
-        <div className="flex flex-col gap-2 max-h-[40vh] overflow-y-auto">
+        <div className="flex flex-col gap-2">
           {categories.map((c) => (
             <div key={c.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-secondary">
-              <span className="text-xl w-8 text-center">{c.icon || "📁"}</span>
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center text-xl flex-shrink-0"
+                style={{ backgroundColor: c.color ?? "var(--muted)" }}
+              >
+                {c.icon || "📁"}
+              </div>
               <span className="text-sm font-medium text-foreground flex-1">{c.name}</span>
               <button
                 onClick={() => onEdit(c)}
@@ -169,13 +235,14 @@ function CategoriesList({ onEdit, onAdd }: { onEdit: (c: CategoryResponse) => vo
 
 // ─── Rules management ─────────────────────────────────────────────────────────
 
-function RulesList({ onAdd, onDelete }: { onAdd: () => void; onDelete: (id: string) => void }) {
-  const rules = loadRules();
-  const { data: categories = [] } = useCategories();
+function RulesList({ onAdd }: { onAdd: () => void }) {
+  const { data: rules = [], isLoading } = useCategoryRules();
+  const deleteMut = useDeleteCategoryRule();
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const catName = (id: number) => {
-    const c = categories.find(c => c.id === id);
-    return c ? `${c.icon ?? ""} ${c.name}`.trim() : `Cat ${id}`;
+  const handleDelete = async (id: number) => {
+    setDeletingId(id);
+    try { await deleteMut.mutateAsync(id); } finally { setDeletingId(null); }
   };
 
   return (
@@ -184,7 +251,11 @@ function RulesList({ onAdd, onDelete }: { onAdd: () => void; onDelete: (id: stri
         Si la descripción contiene la palabra clave, se asigna la categoría automáticamente.
       </p>
       <div className="flex flex-col gap-2 max-h-[40vh] overflow-y-auto">
-        {rules.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4">
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          </div>
+        ) : rules.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No hay reglas</p>
         ) : rules.map((r) => (
           <div key={r.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-secondary">
@@ -192,12 +263,15 @@ function RulesList({ onAdd, onDelete }: { onAdd: () => void; onDelete: (id: stri
               {r.keyword}
             </span>
             <span className="text-muted-foreground text-xs">→</span>
-            <span className="text-sm text-foreground flex-1">{catName(r.categoryId)}</span>
+            <span className="text-sm text-foreground flex-1">{r.categoryName}</span>
             <button
-              onClick={() => onDelete(r.id)}
-              className="p-1.5 rounded-lg hover:bg-red-100 transition-colors"
+              onClick={() => handleDelete(r.id)}
+              disabled={deletingId === r.id}
+              className="p-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
             >
-              <Trash2 size={14} className="text-red-400" />
+              {deletingId === r.id
+                ? <Loader2 size={14} className="animate-spin text-red-400" />
+                : <Trash2 size={14} className="text-red-400" />}
             </button>
           </div>
         ))}
@@ -215,21 +289,20 @@ function RulesList({ onAdd, onDelete }: { onAdd: () => void; onDelete: (id: stri
 
 function RuleForm({ onBack }: { onBack: () => void }) {
   const { data: categories = [], isLoading } = useCategories();
+  const createMut = useCreateCategoryRule();
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!keyword.trim()) { setError("Ingresá una palabra clave"); return; }
     if (!categoryId) { setError("Seleccioná una categoría"); return; }
-    const rules = loadRules();
-    const newRule: CategoryRule = {
-      id: Date.now().toString(),
-      keyword: keyword.trim().toLowerCase(),
-      categoryId: Number(categoryId),
-    };
-    saveRules([...rules, newRule]);
-    onBack();
+    try {
+      await createMut.mutateAsync({ keyword: keyword.trim().toLowerCase(), categoryId: Number(categoryId) });
+      onBack();
+    } catch (e: any) {
+      setError(e?.message?.includes("409") || e?.message?.includes("409") ? "Ya existe una regla para ese keyword" : "Error al guardar");
+    }
   };
 
   return (
@@ -256,7 +329,6 @@ function RuleForm({ onBack }: { onBack: () => void }) {
         {isLoading ? (
           <div className="flex items-center gap-2 h-11 px-4 rounded-xl bg-secondary">
             <Loader2 size={14} className="animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Cargando...</span>
           </div>
         ) : (
           <select
@@ -266,9 +338,7 @@ function RuleForm({ onBack }: { onBack: () => void }) {
           >
             <option value="">Seleccioná una categoría</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id ?? ""}>
-                {c.icon} {c.name}
-              </option>
+              <option key={c.id} value={c.id ?? ""}>{c.icon} {c.name}</option>
             ))}
           </select>
         )}
@@ -276,8 +346,10 @@ function RuleForm({ onBack }: { onBack: () => void }) {
       {error && <div className="text-xs text-red-500 font-medium bg-red-50 rounded-xl px-4 py-2">{error}</div>}
       <button
         onClick={handleSave}
-        className="h-12 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center"
+        disabled={createMut.isPending}
+        className="h-12 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
       >
+        {createMut.isPending && <Loader2 size={15} className="animate-spin" />}
         Guardar regla
       </button>
     </div>
@@ -345,11 +417,6 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
     onClose();
   };
 
-  const deleteRule = (id: string) => {
-    saveRules(loadRules().filter(r => r.id !== id));
-    setView("rules"); // force re-render
-  };
-
   const headingFor: Record<View, string> = {
     main: "Configuración",
     categories: "Categorías",
@@ -363,7 +430,7 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center">
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative w-full max-w-lg bg-card rounded-t-3xl shadow-card animate-slide-up p-6 pb-10 max-h-[82vh] flex flex-col">
+      <div className="relative w-full max-w-lg bg-card rounded-t-3xl shadow-card animate-slide-up p-6 pb-10 max-h-[94vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-bold text-foreground">{headingFor[view]}</h2>
@@ -429,7 +496,7 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
               <button onClick={() => setView("main")} className="flex items-center gap-1 text-xs text-muted-foreground mb-4 hover:text-foreground transition-colors">
                 <ChevronLeft size={14} /> Volver
               </button>
-              <RulesList onAdd={() => setView("ruleForm")} onDelete={deleteRule} />
+              <RulesList onAdd={() => setView("ruleForm")} />
             </div>
           )}
 

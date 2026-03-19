@@ -6,6 +6,8 @@ import type {
   CurrencyResponse,
   GastoCreateRequest,
   CategoryCreateRequest,
+  Label,
+  CategoryRule,
 } from "@/types/api";
 
 // En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
@@ -18,8 +20,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  if (res.status === 204 || res.headers.get("content-length") === "0") return undefined as T;
+  const text = await res.text();
+  return text ? JSON.parse(text) : undefined as T;
 }
 
 /** Normalize a raw category object regardless of field naming convention */
@@ -30,6 +33,7 @@ function normalizeCategory(c: any): CategoryResponse {
     name: c.name || c.category || c.categoryName || c.label || `Cat ${id}`,
     description: c.description || c.categoryDescription || null,
     icon: c.icon || c.categoryIcon || c.emoji || c.image || null,
+    color: c.color ?? c.categoryColor ?? null,
   };
 }
 
@@ -61,6 +65,7 @@ export const api = {
       categoryName: c.categoryName || c.name || c.category || `Cat ${c.categoryId ?? c.id}`,
       categoryDescription: c.categoryDescription || c.description || null,
       categoryIcon: c.categoryIcon || c.icon || c.emoji || null,
+      categoryColor: c.categoryColor ?? c.color ?? null,
       amount: c.amount ?? 0,
       currencyId: c.currencyId ?? c.currency_id ?? null,
       currency: c.currency || c.currencyName || c.name || "",
@@ -95,11 +100,41 @@ export const api = {
   },
 
   createCategory: (data: CategoryCreateRequest) =>
-    request<CategoryResponse>("/categories", { method: "POST", body: JSON.stringify(data) }),
+    request<CategoryResponse>("/categories", {
+      method: "POST",
+      body: JSON.stringify({ categoryName: data.name, categoryDescription: data.description ?? null, categoryIcon: data.icon ?? null, categoryColor: data.color ?? null }),
+    }),
 
   updateCategory: (id: number, data: CategoryCreateRequest) =>
-    request<CategoryResponse>(`/categories/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    request<CategoryResponse>(`/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ categoryName: data.name, categoryDescription: data.description ?? null, categoryIcon: data.icon ?? null, categoryColor: data.color ?? null }),
+    }),
 
   deleteCategory: (id: number) =>
     request<void>(`/categories/${id}`, { method: "DELETE" }),
+
+  getLabels: (): Promise<Label[]> =>
+    request<Label[]>("/labels"),
+
+  addGastoLabels: (gastoId: number, labels: string[]) =>
+    request<{ gastoId: number; labels: Label[] }>(`/gastos/${gastoId}/labels`, {
+      method: "POST",
+      body: JSON.stringify({ labels }),
+    }),
+
+  removeGastoLabel: (gastoId: number, labelId: number) =>
+    request<void>(`/gastos/${gastoId}/labels/${labelId}`, { method: "DELETE" }),
+
+  getCategoryRules: (): Promise<CategoryRule[]> =>
+    request<CategoryRule[]>("/category-rules"),
+
+  createCategoryRule: (data: { keyword: string; categoryId: number }) =>
+    request<CategoryRule>("/category-rules", { method: "POST", body: JSON.stringify(data) }),
+
+  updateCategoryRule: (id: number, data: { keyword: string; categoryId: number }) =>
+    request<CategoryRule>(`/category-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteCategoryRule: (id: number) =>
+    request<void>(`/category-rules/${id}`, { method: "DELETE" }),
 };

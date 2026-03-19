@@ -14,9 +14,10 @@ export function useGastosForYear(year: number) {
     queries: Array.from({ length: 12 }, (_, i) => ({
       queryKey: ["gastos", year, i + 1],
       queryFn: () => api.getGastos(year, i + 1),
+      enabled: year > 0,
     })),
   });
-  const isLoading = results.some((r) => r.isLoading);
+  const isLoading = year > 0 && results.some((r) => r.isLoading);
   const data = isLoading ? undefined : results.flatMap((r) => r.data ?? []);
   return { data, isLoading };
 }
@@ -33,6 +34,7 @@ export function useGastosByCategoriesForYear(year: number) {
     queries: Array.from({ length: 12 }, (_, i) => ({
       queryKey: ["gastosByCategories", year, i + 1],
       queryFn: () => api.getGastosByCategories(year, i + 1),
+      enabled: year > 0,
     })),
   });
   const isLoading = results.some((r) => r.isLoading);
@@ -123,5 +125,37 @@ export function useDeleteCategory() {
   return useMutation({
     mutationFn: (id: number) => api.deleteCategory(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
+  });
+}
+
+export function useLabels() {
+  return useQuery({ queryKey: ["labels"], queryFn: api.getLabels, staleTime: 60 * 1000 });
+}
+
+export function useCategoryRules() {
+  return useQuery({ queryKey: ["categoryRules"], queryFn: api.getCategoryRules, staleTime: 60 * 1000 });
+}
+
+export function useCreateCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { keyword: string; categoryId: number }) => api.createCategoryRule(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categoryRules"] }),
+  });
+}
+
+export function useUpdateCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { keyword: string; categoryId: number } }) => api.updateCategoryRule(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categoryRules"] }),
+  });
+}
+
+export function useDeleteCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCategoryRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categoryRules"] }),
   });
 }

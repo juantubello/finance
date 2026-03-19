@@ -6,11 +6,25 @@ export interface GastoResponse {
   categoryId: number | null;
   category: string;
   categoryIcon: string | null;
+  categoryColor: string | null;
   currencyId: number;
   currency: string;
   currencySymbol: string;
+  labels: { id: number; name: string }[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Label {
+  id: number;
+  name: string;
+}
+
+export interface CategoryRule {
+  id: number;
+  keyword: string;
+  categoryId: number;
+  categoryName: string;
 }
 
 export interface GastosByCategoryResponse {
@@ -18,6 +32,7 @@ export interface GastosByCategoryResponse {
   categoryName: string;
   categoryDescription: string | null;
   categoryIcon: string | null;
+  categoryColor: string | null;
   amount: number;
   currencyId: number;
   currency: string;
@@ -38,6 +53,7 @@ export interface CategoryResponse {
   name: string;
   description: string | null;
   icon: string | null;
+  color: string | null;
 }
 
 export interface CurrencyResponse {
@@ -58,4 +74,5 @@ export interface CategoryCreateRequest {
   name: string;
   description?: string | null;
   icon?: string | null;
+  color?: string | null;
 }

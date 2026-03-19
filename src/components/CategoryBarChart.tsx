@@ -57,7 +57,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
       {categories.map((cat, i) => {
         const pct = total > 0 ? Math.round((cat.amount / total) * 100) : 0;
         const barH = max > 0 ? Math.max(28, Math.round((cat.amount / max) * BAR_MAX_H)) : 28;
-        const color = colors[i % colors.length];
+        const color = cat.categoryColor ?? colors[i % colors.length];
         const isActive = activeIndices.includes(i);
         const isDimmed = hasSelection && !isActive;
 
@@ -84,7 +84,10 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
                 )}
               </div>
             </div>
-            <span className="text-[11px] font-bold text-foreground mt-1 tabular">
+            <span className="text-[10px] font-semibold text-muted-foreground mt-1 w-full text-center truncate px-1">
+              {cat.categoryName}
+            </span>
+            <span className="text-[11px] font-bold text-foreground tabular">
               {formatAmount(cat.amount)}
             </span>
             <span className="text-[10px] text-muted-foreground tabular">{pct}%</span>
