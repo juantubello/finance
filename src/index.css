@@ -48,6 +48,50 @@
     --shadow-subtle: 0 0 0 1px rgba(0,0,0,.04), 0 2px 4px rgba(0,0,0,.02);
     --shadow-card: 0 0 0 1px rgba(0,0,0,.05), 0 4px 6px -1px rgba(0,0,0,.02), 0 2px 4px -1px rgba(0,0,0,.01);
   }
+
+  .dark {
+    --background: 224 15% 10%;
+    --foreground: 220 15% 94%;
+
+    --card: 224 15% 13%;
+    --card-foreground: 220 15% 94%;
+
+    --popover: 224 15% 13%;
+    --popover-foreground: 220 15% 94%;
+
+    --primary: 221.2 83.2% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 12% 18%;
+    --secondary-foreground: 220 15% 85%;
+
+    --muted: 224 12% 18%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 221.2 83.2% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --expense: 0 72% 55%;
+
+    --border: 224 12% 22%;
+    --input: 224 12% 22%;
+    --ring: 221.2 83.2% 60%;
+
+    --sidebar-background: 224 15% 10%;
+    --sidebar-foreground: 220 15% 85%;
+    --sidebar-primary: 220 15% 94%;
+    --sidebar-primary-foreground: 224 15% 10%;
+    --sidebar-accent: 224 12% 18%;
+    --sidebar-accent-foreground: 220 15% 85%;
+    --sidebar-border: 224 12% 22%;
+    --sidebar-ring: 221.2 83.2% 60%;
+
+    --shadow-subtle: 0 0 0 1px rgba(0,0,0,.2), 0 2px 4px rgba(0,0,0,.1);
+    --shadow-card: 0 0 0 1px rgba(0,0,0,.25), 0 4px 6px -1px rgba(0,0,0,.15), 0 2px 4px -1px rgba(0,0,0,.1);
+  }
 }
 
 @layer base {

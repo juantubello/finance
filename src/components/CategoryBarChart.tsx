@@ -1,9 +1,31 @@
+import { useState, useEffect } from "react";
 import type { GastosByCategoryResponse } from "@/types/api";
 
-export const BAR_COLORS = [
+const BAR_COLORS_LIGHT = [
   "#c8f0b0", "#ffc8c8", "#d0d0d0", "#b8d8ff",
   "#ffe8a0", "#e0c0ff", "#b0f0e0", "#ffd4a0",
 ];
+
+const BAR_COLORS_DARK = [
+  "#6ee7b7", "#fca5a5", "#94a3b8", "#93c5fd",
+  "#fcd34d", "#c4b5fd", "#5eead4", "#fdba74",
+];
+
+function useIsDark() {
+  const [isDark, setIsDark] = useState(() =>
+    document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return isDark;
+}
+
+export const BAR_COLORS = BAR_COLORS_LIGHT;
 
 function formatAmount(amount: number): string {
   if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
@@ -21,6 +43,9 @@ interface Props {
 const BAR_MAX_H = 175;
 
 export default function CategoryBarChart({ categories, activeIndices, onSelect }: Props) {
+  const isDark = useIsDark();
+  const colors = isDark ? BAR_COLORS_DARK : BAR_COLORS_LIGHT;
+
   if (!categories.length) return null;
 
   const max = Math.max(...categories.map((c) => c.amount));
@@ -32,7 +57,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
       {categories.map((cat, i) => {
         const pct = total > 0 ? Math.round((cat.amount / total) * 100) : 0;
         const barH = max > 0 ? Math.max(28, Math.round((cat.amount / max) * BAR_MAX_H)) : 28;
-        const color = BAR_COLORS[i % BAR_COLORS.length];
+        const color = colors[i % colors.length];
         const isActive = activeIndices.includes(i);
         const isDimmed = hasSelection && !isActive;
 

@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap } from "lucide-react";
+import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash } from "lucide-react";
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/useApi";
 import type { CategoryResponse } from "@/types/api";
 import { loadRules, saveRules, type CategoryRule } from "@/lib/categoryRules";
+import type { Theme } from "@/App";
 
 type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  theme: Theme;
+  onThemeChange: (t: Theme) => void;
 }
 
 interface CategoryFormProps {
@@ -281,9 +284,58 @@ function RuleForm({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ─── Purge cache ──────────────────────────────────────────────────────────────
+
+function PurgeButton() {
+  const [confirm, setConfirm] = useState(false);
+
+  if (confirm) {
+    return (
+      <div className="flex flex-col gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30">
+        <p className="text-xs font-medium text-red-600 dark:text-red-400">¿Limpiar todos los datos locales? Se recargará la app.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+            localStorage.clear();
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map((k) => caches.delete(k)));
+            }
+            if ("serviceWorker" in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map((r) => r.unregister()));
+            }
+            window.location.reload();
+          }}
+            className="flex-1 h-9 rounded-xl bg-red-500 text-white text-xs font-semibold"
+          >
+            Sí, limpiar
+          </button>
+          <button
+            onClick={() => setConfirm(false)}
+            className="flex-1 h-9 rounded-xl bg-secondary text-secondary-foreground text-xs font-semibold"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setConfirm(true)}
+      className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left"
+    >
+      <Trash size={20} className="text-red-400" />
+      <span className="text-sm font-medium text-red-500 flex-1">Limpiar caché local</span>
+    </button>
+  );
+}
+
 // ─── Main sheet ───────────────────────────────────────────────────────────────
 
-export default function SettingsSheet({ open, onClose }: Props) {
+export default function SettingsSheet({ open, onClose, theme, onThemeChange }: Props) {
   const [view, setView] = useState<View>("main");
   const [editingCategory, setEditingCategory] = useState<CategoryResponse | null>(null);
 
@@ -339,6 +391,20 @@ export default function SettingsSheet({ open, onClose }: Props) {
                 <span className="text-sm font-medium text-foreground flex-1">Reglas automáticas</span>
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>
+              {/* Theme toggle */}
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl">
+                {theme === "dark" ? <Moon size={20} className="text-muted-foreground" /> : <Sun size={20} className="text-muted-foreground" />}
+                <span className="text-sm font-medium text-foreground flex-1">Tema</span>
+                <button
+                  onClick={() => onThemeChange(theme === "dark" ? "light" : "dark")}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${theme === "dark" ? "bg-primary" : "bg-secondary"}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${theme === "dark" ? "translate-x-6" : "translate-x-0"}`} />
+                </button>
+              </div>
+
+              {/* Purge cache */}
+              <PurgeButton />
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -17,11 +17,25 @@ import type { GastoResponse } from "@/types/api";
 
 const queryClient = new QueryClient();
 
+export type Theme = "light" | "dark";
+
+export function applyTheme(theme: Theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  localStorage.setItem("theme", theme);
+}
+
 function AppLayout() {
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => {
+    return (localStorage.getItem("theme") as Theme | null) ?? "light";
+  });
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const openAdd = () => { setEditGasto(null); setModalOpen(true); };
   const openEdit = (g: GastoResponse) => { setEditGasto(g); setModalOpen(true); };
@@ -32,7 +46,7 @@ function AppLayout() {
   return (
     <>
       <SideMenu open={sideMenuOpen} onClose={() => setSideMenuOpen(false)} />
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
       <Routes>
         <Route path="/" element={<Index onEditGasto={openEdit} onMenu={openMenu} onSettings={openSettings} />} />
         <Route path="/add" element={<AddExpense />} />
