@@ -64,9 +64,13 @@ function extractDigitNumber(token: string): number | null {
 }
 
 /**
- * Detects multiple [description][amount] pairs in a single transcript and sums them.
- * e.g. "arnaldo 1300 empanadas 12340 y coca cola 1200"
- *   → { totalAmount: 14840, description: "arnaldo + empanadas + coca cola" }
+ * Detects multiple items in a single transcript and sums their amounts.
+ *
+ * Handles two patterns:
+ *   A) desc-first:   "arnaldo 1300 empanadas 12340 coca cola 1200"
+ *   B) amount-first: "2800 en arnaldo y 6500 en carrefour"
+ *                    "2500 en libros y 2000 en clips"
+ *
  * Returns null if fewer than 2 items with amounts are found.
  */
 export function parseMultipleItems(
@@ -74,18 +78,50 @@ export function parseMultipleItems(
 ): { totalAmount: number; description: string } | null {
   const tokens = transcript.toLowerCase().trim().split(/\s+/);
   const SKIP = new Set(["y", "e", "mas", "más"]);
+  // Words that connect an amount to its following description (amount-first pattern)
+  const CONNECTORS = new Set(["en", "para"]);
 
   const items: { desc: string; amount: number }[] = [];
-  let descWords: string[] = [];
 
-  for (const token of tokens) {
-    if (SKIP.has(token)) continue;
-    const n = extractDigitNumber(token);
-    if (n !== null && n > 0) {
-      items.push({ desc: descWords.join(" ").trim(), amount: n });
-      descWords = [];
-    } else {
-      descWords.push(token);
+  // Detect pattern: if the first meaningful token is a number → amount-first
+  const firstMeaningful = tokens.find((t) => !SKIP.has(t));
+  const isAmountFirst =
+    firstMeaningful !== undefined && extractDigitNumber(firstMeaningful) !== null;
+
+  if (isAmountFirst) {
+    // Pattern B: "[amount] [connector?] [desc words…] [amount] [connector?] [desc words…]"
+    let currentAmount: number | null = null;
+    let descWords: string[] = [];
+
+    for (const token of tokens) {
+      if (SKIP.has(token) || CONNECTORS.has(token)) continue; // skip "y", "en", etc.
+      const n = extractDigitNumber(token);
+      if (n !== null && n > 0) {
+        if (currentAmount !== null) {
+          items.push({ desc: descWords.join(" ").trim(), amount: currentAmount });
+          descWords = [];
+        }
+        currentAmount = n;
+      } else {
+        descWords.push(token);
+      }
+    }
+    // Capture the last item (desc words that follow the final amount)
+    if (currentAmount !== null) {
+      items.push({ desc: descWords.join(" ").trim(), amount: currentAmount });
+    }
+  } else {
+    // Pattern A: "[desc words…] [amount] [desc words…] [amount]…"
+    let descWords: string[] = [];
+    for (const token of tokens) {
+      if (SKIP.has(token)) continue;
+      const n = extractDigitNumber(token);
+      if (n !== null && n > 0) {
+        items.push({ desc: descWords.join(" ").trim(), amount: n });
+        descWords = [];
+      } else {
+        descWords.push(token);
+      }
     }
   }
 

@@ -15,7 +15,7 @@ export default function PageShell({ onMenu, onSettings, children }: Props) {
   const [month, setMonth] = useState(now.getMonth() + 1);
 
   return (
-    <div className="flex flex-col h-[100dvh] max-w-lg mx-auto">
+    <div className="flex flex-col h-[100dvh] max-w-lg mx-auto lg:max-w-3xl">
       <div className="flex-shrink-0">
         <DateFilter
           mode={filterMode}

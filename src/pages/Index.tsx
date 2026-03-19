@@ -127,8 +127,8 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
 
   const total = useMemo(() => {
     if (!gastos || gastos.length === 0) return null;
-    const total = gastos.reduce((s, g) => s + g.amount, 0);
-    return { symbol: selectedCurrency?.symbol ?? "", total };
+    const sum = gastos.reduce((s, g) => s + g.amount, 0);
+    return { symbol: selectedCurrency?.symbol ?? "", total: sum };
   }, [gastos, selectedCurrency]);
 
   const selectedSum = useMemo(() => {
@@ -164,10 +164,10 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   const hasChart = viewMode === "gastos" && (loadingCats || (categories && categories.length > 0));
 
   return (
-    <div className="flex flex-col h-[100dvh] max-w-lg mx-auto">
+    <div className="flex flex-col h-[100dvh] lg:flex-row lg:max-w-5xl lg:mx-auto">
 
-      {/* ── Static top section ── */}
-      <div className="flex-shrink-0">
+      {/* ── Left panel (top on mobile, sidebar on desktop) ── */}
+      <div className="flex-shrink-0 lg:w-[400px] lg:h-full lg:flex lg:flex-col lg:border-r lg:border-border lg:overflow-y-auto">
         <DateFilter
           mode={filterMode}
           year={year}
@@ -178,64 +178,45 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
           onSettings={onSettings}
         />
 
-        {/* Totals + pills */}
+        {/* Disponible */}
         <div className="px-5 pb-2 flex flex-col items-center text-center">
           {loadingGastos ? (
             <div className="space-y-2">
-              <div className="h-4 w-12 bg-secondary rounded animate-pulse mx-auto" />
+              <div className="h-4 w-20 bg-secondary rounded animate-pulse mx-auto" />
               <div className="h-10 w-48 bg-secondary rounded-lg animate-pulse mx-auto" />
               <div className="h-7 w-44 bg-secondary rounded-full animate-pulse mx-auto mt-1" />
             </div>
           ) : total ? (
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Total</p>
-              <div className="flex items-baseline gap-1.5 justify-center">
+              <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
+              <div className="flex items-baseline gap-2 justify-center">
                 <span className="text-4xl font-bold tracking-tighter tabular text-foreground">
                   {total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
                 </span>
-                {/* Currency selector button */}
-                <div className="relative flex-shrink-0" ref={currencyDropdownRef}>
-                  <button
-                    onClick={() => setCurrencyDropdownOpen((v) => !v)}
-                    className="flex items-center gap-0.5 px-2 py-1 rounded-xl bg-secondary hover:bg-muted transition-colors"
-                  >
-                    <span className="text-sm font-bold text-foreground">{selectedCurrency?.name ?? selectedCurrency?.symbol ?? "—"}</span>
-                    <ChevronDown size={11} className="text-muted-foreground" />
-                  </button>
-                  {currencyDropdownOpen && (
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 min-w-[130px]">
-                      {availableCurrencies.map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={() => { setSelectedCurrencyId(c.id); setCurrencyDropdownOpen(false); setActiveIndices([]); }}
-                          className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors hover:bg-secondary ${
-                            c.id === selectedCurrencyId ? "text-primary font-semibold" : "text-foreground"
-                          }`}
-                        >
-                          {c.symbol} — {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <span className="text-sm font-semibold text-muted-foreground">
+                  {selectedCurrency?.name ?? selectedCurrency?.symbol ?? "ARS"}
+                </span>
               </div>
-              <div className="mt-2 flex gap-2 justify-center">
+              {/* Segmented control */}
+              <div className="mt-2 flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden" style={{ width: 300 }}>
                 <button
                   onClick={() => setViewMode("gastos")}
-                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  style={{ flexGrow: viewMode === "gastos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
+                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
                     viewMode === "gastos"
                       ? "bg-[#ff5c4d] text-white shadow-sm"
-                      : "bg-secondary text-muted-foreground"
+                      : "text-muted-foreground/70"
                   }`}
                 >
                   — {total.symbol}{total.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                 </button>
                 <button
                   onClick={() => setViewMode("ingresos")}
-                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  style={{ flexGrow: viewMode === "ingresos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
+                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
                     viewMode === "ingresos"
-                      ? "bg-emerald-500 text-white shadow-sm"
-                      : "bg-secondary text-muted-foreground"
+                      ? "bg-emerald-400 text-white shadow-sm"
+                      : "text-muted-foreground/70"
                   }`}
                 >
                   + Ingresos
@@ -250,17 +231,20 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
           ) : !loadingGastos ? (
             <div>
               <p className="text-sm text-muted-foreground mb-2">No hay datos este período</p>
-              <div className="flex gap-2 justify-center">
+              {/* Segmented control — no data */}
+              <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden" style={{ width: 240 }}>
                 <button
                   onClick={() => setViewMode("gastos")}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                    viewMode === "gastos" ? "bg-[#ff5c4d] text-white shadow-sm" : "bg-secondary text-muted-foreground"
+                  style={{ flexGrow: viewMode === "gastos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
+                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
+                    viewMode === "gastos" ? "bg-[#ff5c4d] text-white shadow-sm" : "text-muted-foreground/70"
                   }`}
                 >— Gastos</button>
                 <button
                   onClick={() => setViewMode("ingresos")}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                    viewMode === "ingresos" ? "bg-emerald-500 text-white shadow-sm" : "bg-secondary text-muted-foreground"
+                  style={{ flexGrow: viewMode === "ingresos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
+                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
+                    viewMode === "ingresos" ? "bg-emerald-400 text-white shadow-sm" : "text-muted-foreground/70"
                   }`}
                 >+ Ingresos</button>
               </div>
@@ -288,10 +272,14 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Search + currency selector + chart toggle */}
+      {/* ── Right panel (bottom on mobile, main content on desktop) ── */}
+      <div className="flex-1 flex flex-col min-h-0 lg:h-full">
+
+        {/* Search + currency filter + chart toggle */}
         {viewMode === "gastos" && (
-          <div className="flex items-center gap-2 px-5 py-2">
+          <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0">
             {/* Search */}
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -303,6 +291,34 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
                 className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
               />
             </div>
+
+            {/* Currency selector — only shown when multiple currencies exist */}
+            {availableCurrencies.length > 1 && (
+              <div className="relative flex-shrink-0" ref={currencyDropdownRef}>
+                <button
+                  onClick={() => setCurrencyDropdownOpen((v) => !v)}
+                  className="flex items-center gap-0.5 h-9 px-3 rounded-xl bg-secondary hover:bg-muted transition-colors"
+                >
+                  <span className="text-sm font-bold text-foreground">{selectedCurrency?.symbol ?? "ARS"}</span>
+                  <ChevronDown size={11} className="text-muted-foreground" />
+                </button>
+                {currencyDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 min-w-[130px]">
+                    {availableCurrencies.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => { setSelectedCurrencyId(c.id); setCurrencyDropdownOpen(false); setActiveIndices([]); }}
+                        className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors hover:bg-secondary ${
+                          c.id === selectedCurrencyId ? "text-primary font-semibold" : "text-foreground"
+                        }`}
+                      >
+                        {c.symbol} — {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Chart toggle */}
             {hasChart && (
@@ -317,46 +333,46 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
             )}
           </div>
         )}
-      </div>
 
-      {/* ── Scrollable list ── */}
-      <div className="flex-1 overflow-y-auto overscroll-contain">
-        {viewMode === "ingresos" ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <span className="text-4xl mb-4">💰</span>
-            <p className="text-sm font-medium text-foreground mb-1">No se registraron ingresos</p>
-            <p className="text-xs text-muted-foreground">Tocá '+' para registrar un ingreso</p>
-          </div>
-        ) : errorGastos ? (
-          <div className="mx-5 mt-2 p-4 rounded-2xl bg-expense/10 text-expense text-sm">
-            Error al cargar los gastos. Verificá tu conexión.
-          </div>
-        ) : loadingGastos ? (
-          <SkeletonList />
-        ) : (
-          <div className="animate-fade-in">
-            {filtered.map((g) => (
-              <ExpenseRow
-                key={g.id}
-                gasto={g}
-                onClick={() => onEditGasto(g)}
-                categoryColor={
-                  g.categoryId != null
-                    ? categoryColorMap.get(String(g.categoryId))
-                    : categoryColorMap.get(g.category)
-                }
-              />
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-12">
-                {activeCategories
-                  ? "No hay gastos en las categorías seleccionadas."
-                  : "No hay gastos registrados. Tocá '+' para empezar."}
-              </p>
-            )}
-          </div>
-        )}
-        <div className="h-24" />
+        {/* ── Scrollable list ── */}
+        <div className="flex-1 overflow-y-auto overscroll-contain">
+          {viewMode === "ingresos" ? (
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <span className="text-4xl mb-4">💰</span>
+              <p className="text-sm font-medium text-foreground mb-1">No se registraron ingresos</p>
+              <p className="text-xs text-muted-foreground">Tocá '+' para registrar un ingreso</p>
+            </div>
+          ) : errorGastos ? (
+            <div className="mx-5 mt-2 p-4 rounded-2xl bg-expense/10 text-expense text-sm">
+              Error al cargar los gastos. Verificá tu conexión.
+            </div>
+          ) : loadingGastos ? (
+            <SkeletonList />
+          ) : (
+            <div className="animate-fade-in">
+              {filtered.map((g) => (
+                <ExpenseRow
+                  key={g.id}
+                  gasto={g}
+                  onClick={() => onEditGasto(g)}
+                  categoryColor={
+                    g.categoryId != null
+                      ? categoryColorMap.get(String(g.categoryId))
+                      : categoryColorMap.get(g.category)
+                  }
+                />
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-12">
+                  {activeCategories
+                    ? "No hay gastos en las categorías seleccionadas."
+                    : "No hay gastos registrados. Tocá '+' para empezar."}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="h-24" />
+        </div>
       </div>
     </div>
   );
