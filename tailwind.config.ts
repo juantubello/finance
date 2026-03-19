@@ -69,6 +69,11 @@ export default {
         "slide-up": { from: { transform: "translateY(100%)" }, to: { transform: "translateY(0)" } },
         "slide-in-left": { from: { transform: "translateX(-100%)" }, to: { transform: "translateX(0)" } },
         "pulse-record": { "0%, 100%": { opacity: "1" }, "50%": { opacity: "0.5" } },
+        "gradient-shift": {
+          "0%":   { backgroundPosition: "0% 50%" },
+          "50%":  { backgroundPosition: "100% 50%" },
+          "100%": { backgroundPosition: "0% 50%" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -77,6 +82,7 @@ export default {
         "slide-up": "slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
         "slide-in-left": "slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
         "pulse-record": "pulse-record 1.5s ease-in-out infinite",
+        "gradient-shift": "gradient-shift 4s ease infinite",
       },
     },
   },

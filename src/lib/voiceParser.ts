@@ -103,11 +103,18 @@ export function parseVoiceInput(transcript: string): { amount: number | null; de
 
   const amount = parseAmountOnly(transcript);
 
-  // Extract description: text after "en" or "para"
-  const descMatch = lower.split(/ en | para /);
-  let description = descMatch.length > 1
-    ? descMatch.slice(1).join(" ").trim()
-    : lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
+  // Only split on "en"/"para" when an amount was detected — those words act as
+  // separators between the number and the description (e.g. "gasté cien en café").
+  // If there's no amount, the whole transcript is the description.
+  let description: string;
+  if (amount !== null) {
+    const descMatch = lower.split(/ en | para /);
+    description = descMatch.length > 1
+      ? descMatch.slice(1).join(" ").trim()
+      : lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
+  } else {
+    description = lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
+  }
 
   // Remove number words from description
   const numWordKeys = [...Object.keys(WORD_NUMBERS), "mil", "millón", "millones", "millon"];
