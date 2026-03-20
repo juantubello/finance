@@ -68,8 +68,8 @@ function AppLayout() {
   const openIngresoEdit = (i: IngresoResponse) => { setEditIngreso(i); setIngresoDefaultCategoryId(undefined); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
   const closeIngreso = () => { setIngresoModalOpen(false); setEditIngreso(null); };
 
-  // Ahorro (reuses ingreso modal with category 12)
-  const openAhorroAdd = () => { setEditIngreso(null); setIngresoDefaultCategoryId(12); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
+  // Ahorro
+  const openAhorroAdd = () => { setEditMovimiento(null); setAhorroModalKey(k => k + 1); setAhorroModalOpen(true); };
   const openAhorroEdit = (m: SavingMovement) => { setEditMovimiento(m); setAhorroModalKey(k => k + 1); setAhorroModalOpen(true); };
   const closeAhorro = () => { setAhorroModalOpen(false); setEditMovimiento(null); };
 
