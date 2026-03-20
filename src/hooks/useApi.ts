@@ -354,8 +354,8 @@ export function useUSDCARS() {
     queryFn: async () => {
       const res = await fetch("https://criptoya.com/api/usdc/ars/1");
       const data = await res.json();
-      // Pick letsbit or the first available exchange
-      const exchange = data.letsbit ?? data.binance ?? data.ripio ?? Object.values(data)[0];
+      // Pick dolarapp (ARQ) > arq > binance > letsbit > first available
+      const exchange = data.dolarapp ?? data.arq ?? data.binance ?? data.letsbit ?? data.ripio ?? Object.values(data)[0];
       if (!exchange) return null;
       return { compra: exchange.totalBid, venta: exchange.totalAsk };
     },

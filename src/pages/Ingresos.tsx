@@ -198,7 +198,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings }: Props) {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    USDC ${usdcARS.compra.toLocaleString("es-AR")}
+                    USDC · ARQ ${usdcARS.compra.toLocaleString("es-AR")}
                   </button>
                 )}
               </div>

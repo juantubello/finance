@@ -186,7 +186,7 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
             )}
             {usdcARS && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-secondary text-[10px] font-medium">
-                <span className="font-bold text-foreground">💵 USDC</span>
+                <span className="font-bold text-foreground">💵 USDC · ARQ</span>
                 <span className="text-emerald-500 font-semibold">C ${usdcARS.compra.toLocaleString("es-AR")}</span>
                 <span className="text-muted-foreground/50">·</span>
                 <span className="text-red-500 font-semibold">V ${usdcARS.venta.toLocaleString("es-AR")}</span>
