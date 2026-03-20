@@ -1,21 +1,24 @@
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SideMenu from "@/components/SideMenu";
 import SettingsSheet from "@/components/SettingsSheet";
 import FloatingActionButton from "@/components/FloatingActionButton";
 import ExpenseModal from "@/components/ExpenseModal";
+import IngresoModal from "@/components/IngresoModal";
+import AhorroModal from "@/components/AhorroModal";
 import VoiceOverlay from "@/components/VoiceOverlay";
 import Index from "./pages/Index";
 import AddExpense from "./pages/AddExpense";
 import Categories from "./pages/Categories";
 import CategoryRules from "./pages/CategoryRules";
+import Ingresos from "./pages/Ingresos";
 import Ahorros from "./pages/Ahorros";
 import Estadisticas from "./pages/Estadisticas";
 import NotFound from "./pages/NotFound";
-import type { GastoResponse } from "@/types/api";
+import type { GastoResponse, IngresoResponse, SavingMovement } from "@/types/api";
 import { parseMultipleItems, parseVoiceInput } from "@/lib/voiceParser";
 
 const queryClient = new QueryClient();
@@ -28,26 +31,54 @@ export function applyTheme(theme: Theme) {
 }
 
 function AppLayout() {
+  const location = useLocation();
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalKey, setModalKey] = useState(0);
-  const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
-  const [initialData, setInitialData] = useState<{ description?: string; amount?: number } | null>(null);
-  const [voiceAddOpen, setVoiceAddOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem("theme") as Theme | null) ?? "light";
   });
 
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+  // ── Gasto modal ────────────────────────────────────────────────────────────
+  const [gastoModalOpen, setGastoModalOpen] = useState(false);
+  const [gastoModalKey, setGastoModalKey] = useState(0);
+  const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
+  const [initialData, setInitialData] = useState<{ description?: string; amount?: number } | null>(null);
+  const [voiceAddOpen, setVoiceAddOpen] = useState(false);
 
-  const openAdd = () => { setEditGasto(null); setInitialData(null); setModalKey(k => k + 1); setModalOpen(true); };
-  const openEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setModalKey(k => k + 1); setModalOpen(true); };
-  const closeModal = () => { setModalOpen(false); setEditGasto(null); setInitialData(null); };
-  const openMenu = () => setSideMenuOpen(true);
-  const openSettings = () => setSettingsOpen(true);
+  // ── Ingreso / Ahorro modal (shared) ───────────────────────────────────────
+  const [ingresoModalOpen, setIngresoModalOpen] = useState(false);
+  const [ingresoModalKey, setIngresoModalKey] = useState(0);
+  const [editIngreso, setEditIngreso] = useState<IngresoResponse | null>(null);
+  const [ingresoDefaultCategoryId, setIngresoDefaultCategoryId] = useState<number | undefined>(undefined);
+
+  // ── Ahorro movement modal ──────────────────────────────────────────────────
+  const [ahorroModalOpen, setAhorroModalOpen] = useState(false);
+  const [ahorroModalKey, setAhorroModalKey] = useState(0);
+  const [editMovimiento, setEditMovimiento] = useState<SavingMovement | null>(null);
+
+  useEffect(() => { applyTheme(theme); }, [theme]);
+
+  // Gasto
+  const openGastoAdd = () => { setEditGasto(null); setInitialData(null); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
+  const openGastoEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
+  const closeGasto = () => { setGastoModalOpen(false); setEditGasto(null); setInitialData(null); };
+
+  // Ingreso
+  const openIngresoAdd = () => { setEditIngreso(null); setIngresoDefaultCategoryId(11); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
+  const openIngresoEdit = (i: IngresoResponse) => { setEditIngreso(i); setIngresoDefaultCategoryId(undefined); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
+  const closeIngreso = () => { setIngresoModalOpen(false); setEditIngreso(null); };
+
+  // Ahorro (reuses ingreso modal with category 12)
+  const openAhorroAdd = () => { setEditIngreso(null); setIngresoDefaultCategoryId(12); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
+  const openAhorroEdit = (m: SavingMovement) => { setEditMovimiento(m); setAhorroModalKey(k => k + 1); setAhorroModalOpen(true); };
+  const closeAhorro = () => { setAhorroModalOpen(false); setEditMovimiento(null); };
+
+  // Route-aware FAB
+  const handleAdd = () => {
+    if (location.pathname === "/ingresos") openIngresoAdd();
+    else if (location.pathname === "/ahorros") openAhorroAdd();
+    else openGastoAdd();
+  };
 
   const handleVoiceAddConfirm = (transcript: string) => {
     setVoiceAddOpen(false);
@@ -56,14 +87,11 @@ function AppLayout() {
       setInitialData({ description: multi.description, amount: multi.totalAmount });
     } else {
       const parsed = parseVoiceInput(transcript);
-      setInitialData({
-        description: parsed.description || transcript,
-        amount: parsed.amount ?? undefined,
-      });
+      setInitialData({ description: parsed.description || transcript, amount: parsed.amount ?? undefined });
     }
     setEditGasto(null);
-    setModalKey(k => k + 1);
-    setModalOpen(true);
+    setGastoModalKey(k => k + 1);
+    setGastoModalOpen(true);
   };
 
   return (
@@ -71,21 +99,20 @@ function AppLayout() {
       <SideMenu open={sideMenuOpen} onClose={() => setSideMenuOpen(false)} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
       <Routes>
-        <Route path="/" element={<Index onEditGasto={openEdit} onMenu={openMenu} onSettings={openSettings} />} />
+        <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="/add" element={<AddExpense />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/category-rules" element={<CategoryRules />} />
-        <Route path="/ahorros" element={<Ahorros onMenu={openMenu} onSettings={openSettings} />} />
-        <Route path="/estadisticas" element={<Estadisticas onMenu={openMenu} onSettings={openSettings} />} />
+        <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
+        <Route path="/ahorros" element={<Ahorros onEditMovimiento={openAhorroEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
+        <Route path="/estadisticas" element={<Estadisticas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <VoiceOverlay
-        open={voiceAddOpen}
-        onCancel={() => setVoiceAddOpen(false)}
-        onConfirm={handleVoiceAddConfirm}
-      />
-      <FloatingActionButton onAdd={openAdd} onVoice={() => setVoiceAddOpen(true)} />
-      <ExpenseModal key={modalKey} open={modalOpen} onClose={closeModal} gasto={editGasto} initialData={initialData} />
+      <VoiceOverlay open={voiceAddOpen} onCancel={() => setVoiceAddOpen(false)} onConfirm={handleVoiceAddConfirm} />
+      <FloatingActionButton onAdd={handleAdd} onVoice={() => setVoiceAddOpen(true)} />
+      <ExpenseModal key={gastoModalKey} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} />
+      <IngresoModal key={ingresoModalKey} open={ingresoModalOpen} onClose={closeIngreso} ingreso={editIngreso} defaultCategoryId={ingresoDefaultCategoryId} />
+      <AhorroModal key={ahorroModalKey} open={ahorroModalOpen} onClose={closeAhorro} movimiento={editMovimiento} />
     </>
   );
 }

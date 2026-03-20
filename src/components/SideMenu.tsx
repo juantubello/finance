@@ -1,4 +1,4 @@
-import { X, Home, PiggyBank, BarChart2, Zap } from "lucide-react";
+import { X, Home, PiggyBank, BarChart2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface Props {
@@ -10,7 +10,6 @@ const items = [
   { label: "Inicio", icon: Home, to: "/" },
   { label: "Ahorros", icon: PiggyBank, to: "/ahorros" },
   { label: "Estadísticas", icon: BarChart2, to: "/estadisticas" },
-  { label: "Reglas automáticas", icon: Zap, to: "/category-rules" },
 ];
 
 export default function SideMenu({ open, onClose }: Props) {

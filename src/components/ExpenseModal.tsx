@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { X, Mic, Trash2, Loader2, Check, ChevronDown } from "lucide-react";
 import type { GastoResponse } from "@/types/api";
-import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto, useLabels, useCategoryRules } from "@/hooks/useApi";
+import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto, useLabels, useCategoryRules, useCreateIngreso, useSavingAssets, useCreateSaving } from "@/hooks/useApi";
 import { parseVoiceInput, parseMultipleItems } from "@/lib/voiceParser";
 import VoiceOverlay from "@/components/VoiceOverlay";
 import { detectCategoryFromDescription } from "@/lib/categoryRules";
@@ -52,6 +52,14 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
   const createMut = useCreateGasto();
   const updateMut = useUpdateGasto();
   const deleteMut = useDeleteGasto();
+  const createIngresoMut = useCreateIngreso();
+  const createSavingMut = useCreateSaving();
+  const { data: savingAssets = [] } = useSavingAssets();
+  const [savingActivoId, setSavingActivoId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (savingActivoId === null && savingAssets.length > 0) setSavingActivoId(savingAssets[0].id);
+  }, [savingAssets, savingActivoId]);
 
   const [description, setDescription] = useState(gasto?.description ?? initialData?.description ?? "");
   const [amount, setAmount] = useState(gasto ? String(gasto.amount) : initialData?.amount ? String(initialData.amount) : "");
@@ -148,8 +156,12 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
       setError("Completá descripción y monto");
       return;
     }
-    if (!currencyId) {
+    if (entryType !== "ahorro" && !currencyId) {
       setError("Seleccioná una moneda");
+      return;
+    }
+    if (entryType === "ahorro" && !savingActivoId) {
+      setError("Seleccioná un activo");
       return;
     }
     setError(null);
@@ -162,16 +174,30 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
       currencyId,
     };
     try {
-      if (gasto) {
+      if (entryType === "ahorro") {
+        await withTimeout(createSavingMut.mutateAsync({
+          dateTime: payload.dateTime,
+          activoId: savingActivoId!,
+          cantidad: payload.amount,
+          precioArs: null,
+          description: payload.description,
+        }));
+        await queryClient.invalidateQueries({ queryKey: ["savings"] });
+        await queryClient.invalidateQueries({ queryKey: ["savingBalance"] });
+      } else if (entryType === "ingreso") {
+        await withTimeout(createIngresoMut.mutateAsync({ ...payload, categoryId: 11 }));
+        await queryClient.invalidateQueries({ queryKey: ["ingresos"] });
+      } else if (gasto) {
         await withTimeout(updateMut.mutateAsync({ id: gasto.id, data: payload }));
         const removedLabels = savedLabels.filter(l => !tags.includes(l.name));
         await withTimeout(Promise.all(removedLabels.map(l => api.removeGastoLabel(gasto.id, l.id))));
         if (tags.length > 0) await withTimeout(api.addGastoLabels(gasto.id, tags));
+        await queryClient.invalidateQueries({ queryKey: ["gastos"] });
       } else {
         const savedGasto = await withTimeout(createMut.mutateAsync(payload));
         if (tags.length > 0) await withTimeout(api.addGastoLabels(savedGasto.id, tags));
+        await queryClient.invalidateQueries({ queryKey: ["gastos"] });
       }
-      await queryClient.invalidateQueries({ queryKey: ["gastos"] });
       onClose();
     } catch (e: any) {
       setError(e?.message === "timeout" ? "La operación tardó demasiado. Intentá de nuevo." : "Error al guardar. Intentá de nuevo.");
@@ -254,18 +280,18 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "gasto" ? "bg-[#ff5c4d] text-white" : "bg-secondary text-muted-foreground"}`}
                   >— Egreso</button>
                   <button
-                    onClick={() => { setEntryType("ingreso"); setCategoryId(null); setAutoCategoryKeyword(null); }}
+                    onClick={() => { setEntryType("ingreso"); setCategoryId(11); setAutoCategoryKeyword(null); }}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "ingreso" ? "bg-emerald-500 text-white" : "bg-secondary text-muted-foreground"}`}
                   >+ Ingreso</button>
                   <button
-                    onClick={() => { setEntryType("ahorro"); setCategoryId(null); setAutoCategoryKeyword(null); }}
+                    onClick={() => { setEntryType("ahorro"); setCategoryId(12); setAutoCategoryKeyword(null); }}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "ahorro" ? "bg-blue-500 text-white" : "bg-secondary text-muted-foreground"}`}
                   >🐷 Ahorro</button>
                 </>
               )}
 
-              {/* Currency dropdown */}
-              {!loadingCurrencies && currencies.length > 0 && (
+              {/* Currency dropdown — hidden for ahorro (asset has its own currency) */}
+              {entryType !== "ahorro" && !loadingCurrencies && currencies.length > 0 && (
                 <>
                   <button
                     ref={currencyBtnRef}
@@ -319,7 +345,7 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
                   if (gasto) return;
                   const next: EntryType = entryType === "gasto" ? "ingreso" : entryType === "ingreso" ? "ahorro" : "gasto";
                   setEntryType(next);
-                  setCategoryId(null);
+                  setCategoryId(next === "ingreso" ? 11 : next === "ahorro" ? 12 : null);
                   setAutoCategoryKeyword(null);
                 }}
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 transition-all active:scale-90 ${typeColor}`}
@@ -346,37 +372,60 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
             {/* Divider */}
             <div className="h-px bg-border/50 mb-4 -mx-6" />
 
-            {/* Category pills */}
-            <div className={`mb-2 transition-opacity duration-200 ${entryType !== "gasto" ? "opacity-30 pointer-events-none select-none" : ""}`}>
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Categoría</span>
-                {autoCategoryKeyword && (
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">✨ auto</span>
+            {/* Category pills (gasto) / Asset selector (ahorro) / hidden (ingreso) */}
+            {entryType === "gasto" && (
+              <div className="mb-2">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Categoría</span>
+                  {autoCategoryKeyword && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">✨ auto</span>
+                  )}
+                </div>
+                {loadingCats ? (
+                  <div className="flex gap-2">
+                    {[1, 2, 3].map(i => <div key={i} className="h-8 w-24 bg-secondary rounded-full animate-pulse" />)}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => { setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                          c.id != null && categoryId === c.id
+                            ? "bg-primary text-primary-foreground shadow-subtle"
+                            : "bg-secondary text-secondary-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {c.icon && <span>{c.icon}</span>}
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-              {loadingCats ? (
-                <div className="flex gap-2">
-                  {[1, 2, 3].map(i => <div key={i} className="h-8 w-24 bg-secondary rounded-full animate-pulse" />)}
-                </div>
-              ) : (
+            )}
+
+            {entryType === "ahorro" && (
+              <div className="mb-2">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-2.5">Activo</span>
                 <div className="flex flex-wrap gap-2">
-                  {categories.map(c => (
+                  {savingAssets.map(a => (
                     <button
-                      key={c.id}
-                      onClick={() => { setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
+                      key={a.id}
+                      onClick={() => setSavingActivoId(a.id)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                        c.id != null && categoryId === c.id
-                          ? "bg-primary text-primary-foreground shadow-subtle"
+                        savingActivoId === a.id
+                          ? "bg-blue-500 text-white shadow-subtle"
                           : "bg-secondary text-secondary-foreground hover:bg-muted"
                       }`}
                     >
-                      {c.icon && <span>{c.icon}</span>}
-                      {c.name}
+                      {a.ticker}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {error && (
               <div className="mt-3 text-xs text-red-500 font-medium bg-red-50 dark:bg-red-950/30 rounded-xl px-4 py-2">
@@ -484,23 +533,20 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
                 <Mic size={17} />
               </button>
 
-              {(entryType === "ingreso" || entryType === "ahorro") && !gasto ? (
-                <button
-                  disabled
-                  className={`flex-1 h-11 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed ${
-                    entryType === "ahorro" ? "bg-blue-500/30 text-blue-700" : "bg-emerald-500/30 text-emerald-700"
-                  }`}
-                >Próximamente</button>
-              ) : (
-                <button
-                  onClick={handleSave}
-                  disabled={isLoading}
-                  className="flex-1 h-11 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                  {isLoading ? "Guardando..." : gasto ? "Guardar cambios" : "Guardar"}
-                </button>
-              )}
+              <button
+                onClick={handleSave}
+                disabled={isLoading}
+                className={`flex-1 h-11 rounded-2xl font-semibold text-sm hover:opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                  entryType === "ingreso"
+                    ? "bg-emerald-500 text-white"
+                    : entryType === "ahorro"
+                    ? "bg-blue-500 text-white"
+                    : "bg-primary text-primary-foreground"
+                }`}
+              >
+                {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                {isLoading ? "Guardando..." : gasto ? "Guardar cambios" : "Guardar"}
+              </button>
             </div>
           </div>
 

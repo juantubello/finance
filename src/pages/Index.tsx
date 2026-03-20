@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   useGastos,
   useGastosForYear,
@@ -6,6 +7,9 @@ import {
   useGastosByCategoriesForYear,
   useLabels,
   useCategories,
+  useAvailable,
+  useIngresos,
+  useIngresosForYear,
 } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
 import CategoryBarChart from "@/components/CategoryBarChart";
@@ -16,7 +20,6 @@ import { Search, BarChart2, List, ChevronDown, X, Plus, SlidersHorizontal } from
 import type { Label } from "@/types/api";
 
 const now = new Date();
-type ViewMode = "gastos" | "ingresos";
 
 function LabelInput({ allLabels, labelFilters, onToggle }: {
   allLabels: Label[];
@@ -99,7 +102,9 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("gastos");
+  const navigate = useNavigate();
+  const [pillReady, setPillReady] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
   const [showChart, setShowChart] = useState(true);
   const [selectedCurrencyId, setSelectedCurrencyId] = useState<number | null>(null);
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
@@ -107,6 +112,13 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
 
   const { data: allLabels = [] } = useLabels();
   const { data: categoryDefs = [] } = useCategories();
+  const { data: available } = useAvailable();
+
+  // Ingresos total for the pill (cross-fetch)
+  const ingMonthQ = useIngresos(filterMode === "month" ? year : 0, filterMode === "month" ? month : 0);
+  const ingYearQ = useIngresosForYear(filterMode === "year" ? year : 0);
+  const ingresosData = (filterMode === "year" ? ingYearQ.data : ingMonthQ.data) ?? [];
+  const ingresosTotal = useMemo(() => ingresosData.reduce((s, i) => s + i.amount, 0), [ingresosData]);
 
   // categoryId → hex color from the canonical categories list
   const categoryColorMap = useMemo(() => {
@@ -291,7 +303,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   };
 
 
-  const hasChart = viewMode === "gastos" && (loadingCats || (categories && categories.length > 0));
+  const hasChart = loadingCats || (categories && categories.length > 0);
 
   // Filtered total for the filter panel badge
   const filteredTotal = useMemo(() => {
@@ -301,7 +313,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   }, [filtered, hasAdvancedFilter, selectedCurrency]);
 
   return (
-    <div className="flex flex-col h-[100dvh] lg:flex-row lg:max-w-5xl lg:mx-auto">
+    <div className="flex flex-col h-[100dvh] lg:flex-row lg:max-w-5xl lg:mx-auto animate-page-from-left">
 
       {/* ── Left panel (top on mobile, sidebar on desktop) ── */}
       <div className="flex-shrink-0 lg:w-[400px] lg:h-full lg:flex lg:flex-col lg:border-r lg:border-border lg:overflow-y-auto">
@@ -323,74 +335,46 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
               <div className="h-10 w-48 bg-secondary rounded-lg animate-pulse mx-auto" />
               <div className="h-7 w-44 bg-secondary rounded-full animate-pulse mx-auto mt-1" />
             </div>
-          ) : total ? (
-            <div>
+          ) : (
+            <div className="flex flex-col items-center w-full">
               <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
-              <div className="flex items-baseline gap-2 justify-center">
-                <span className="text-4xl font-bold tracking-tighter tabular text-foreground">
-                  {total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+              <div className="flex items-baseline gap-2 justify-center mb-2">
+                <span className={`text-4xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
+                  {(available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
                 </span>
                 <span className="text-sm font-semibold text-muted-foreground">
-                  {selectedCurrency?.name ?? selectedCurrency?.symbol ?? "ARS"}
+                  {available?.moneda ?? "ARS"}
                 </span>
               </div>
-              {/* Segmented control */}
-              <div className="mt-2 flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden" style={{ width: 300 }}>
+              {/* Segmented control — always rendered so pillReady animation always fires */}
+              <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden w-full max-w-xs">
                 <button
-                  onClick={() => setViewMode("gastos")}
-                  style={{ flexGrow: viewMode === "gastos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
-                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
-                    viewMode === "gastos"
-                      ? "bg-[#ff5c4d] text-white shadow-sm"
-                      : "text-muted-foreground/70"
-                  }`}
+                  style={{ flexGrow: pillReady ? 62 : 50, transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)" }}
+                  className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 bg-[#ff5c4d] text-white shadow-sm"
                 >
-                  — {total.symbol}{total.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  {total
+                    ? `${total.symbol}${total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS`
+                    : "— Gastos"}
                 </button>
                 <button
-                  onClick={() => setViewMode("ingresos")}
-                  style={{ flexGrow: viewMode === "ingresos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
-                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
-                    viewMode === "ingresos"
-                      ? "bg-emerald-400 text-white shadow-sm"
-                      : "text-muted-foreground/70"
-                  }`}
+                  onClick={() => navigate("/ingresos")}
+                  style={{ flexGrow: pillReady ? 38 : 50, transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)" }}
+                  className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 text-muted-foreground/70 hover:text-foreground transition-colors"
                 >
                   + Ingresos
                 </button>
               </div>
-              {selectedSum !== null && viewMode === "gastos" && (
+              {selectedSum !== null && (
                 <span className="inline-flex items-center mt-1.5 px-3 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
-                  Selec: {total.symbol}{selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  Selec: {total?.symbol}{selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                 </span>
               )}
             </div>
-          ) : !loadingGastos ? (
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">No hay datos este período</p>
-              {/* Segmented control — no data */}
-              <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden" style={{ width: 240 }}>
-                <button
-                  onClick={() => setViewMode("gastos")}
-                  style={{ flexGrow: viewMode === "gastos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
-                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
-                    viewMode === "gastos" ? "bg-[#ff5c4d] text-white shadow-sm" : "text-muted-foreground/70"
-                  }`}
-                >— Gastos</button>
-                <button
-                  onClick={() => setViewMode("ingresos")}
-                  style={{ flexGrow: viewMode === "ingresos" ? 62 : 38, transition: "flex-grow 0.35s ease, background-color 0.25s ease" }}
-                  className={`py-2 px-3 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 ${
-                    viewMode === "ingresos" ? "bg-emerald-400 text-white shadow-sm" : "text-muted-foreground/70"
-                  }`}
-                >+ Ingresos</button>
-              </div>
-            </div>
-          ) : null}
+          )}
         </div>
 
         {/* Collapsible chart */}
-        {viewMode === "gastos" && (
+        {(
           <div className={`grid transition-[grid-template-rows] duration-400 ease-in-out ${showChart ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden min-h-0">
               {loadingCats ? (
@@ -415,7 +399,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
       <div className="flex-1 flex flex-col min-h-0 lg:h-full">
 
         {/* Search + currency filter + chart toggle */}
-        {viewMode === "gastos" && (
+        {(
           <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0">
             {/* Filter toggle */}
             <button
@@ -490,7 +474,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
         )}
 
         {/* ── Filter panel ── */}
-        {viewMode === "gastos" && (
+        {(
           <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out flex-shrink-0 ${showFilters ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden min-h-0">
               <div className="mx-5 mb-3 rounded-2xl bg-secondary/60 border border-border/40 overflow-hidden divide-y divide-border/40">
@@ -605,13 +589,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
 
         {/* ── Scrollable list ── */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
-          {viewMode === "ingresos" ? (
-            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-              <span className="text-4xl mb-4">💰</span>
-              <p className="text-sm font-medium text-foreground mb-1">No se registraron ingresos</p>
-              <p className="text-xs text-muted-foreground">Tocá '+' para registrar un ingreso</p>
-            </div>
-          ) : errorGastos ? (
+          {errorGastos ? (
             <div className="mx-5 mt-2 p-4 rounded-2xl bg-expense/10 text-expense text-sm">
               Error al cargar los gastos. Verificá tu conexión.
             </div>

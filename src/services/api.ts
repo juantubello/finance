@@ -8,6 +8,15 @@ import type {
   CategoryCreateRequest,
   Label,
   CategoryRule,
+  IngresoResponse,
+  IngresoCreateRequest,
+  IncomeCategoryResponse,
+  SavingAsset,
+  SavingBalance,
+  SavingMovement,
+  SavingCreateRequest,
+  AvailableResponse,
+  CedearSPY,
 } from "@/types/api";
 
 // En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
@@ -137,4 +146,79 @@ export const api = {
 
   deleteCategoryRule: (id: number) =>
     request<void>(`/category-rules/${id}`, { method: "DELETE" }),
+
+  // ── Ingresos ────────────────────────────────────────────────────────────────
+
+  getIngresos: (year: number, month: number) =>
+    request<IngresoResponse[]>(`/ingresos?year=${year}&month=${month}`),
+
+  getIngreso: (id: number) =>
+    request<IngresoResponse>(`/ingresos/${id}`),
+
+  createIngreso: (data: IngresoCreateRequest) =>
+    request<IngresoResponse>("/ingresos", { method: "POST", body: JSON.stringify(data) }),
+
+  updateIngreso: (id: number, data: IngresoCreateRequest) =>
+    request<IngresoResponse>(`/ingresos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteIngreso: (id: number) =>
+    request<void>(`/ingresos/${id}`, { method: "DELETE" }),
+
+  // ── Income Categories ────────────────────────────────────────────────────────
+
+  getIncomeCategories: async (): Promise<IncomeCategoryResponse[]> => {
+    const raw = await request<any[]>("/income-categories");
+    return raw.map((c: any) => ({
+      id: c.id ?? c.categoryId ?? null,
+      name: c.name || c.categoryName || `Cat ${c.id}`,
+      description: c.description || c.categoryDescription || null,
+      icon: c.icon || c.categoryIcon || null,
+      color: c.color ?? c.categoryColor ?? null,
+    }));
+  },
+
+  createIncomeCategory: (data: { name: string; description?: string | null; icon?: string | null; color?: string | null }) =>
+    request<IncomeCategoryResponse>("/income-categories", {
+      method: "POST",
+      body: JSON.stringify({ categoryName: data.name, categoryDescription: data.description ?? null, categoryIcon: data.icon ?? null, categoryColor: data.color ?? null }),
+    }),
+
+  updateIncomeCategory: (id: number, data: { name: string; description?: string | null; icon?: string | null; color?: string | null }) =>
+    request<IncomeCategoryResponse>(`/income-categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ categoryName: data.name, categoryDescription: data.description ?? null, categoryIcon: data.icon ?? null, categoryColor: data.color ?? null }),
+    }),
+
+  deleteIncomeCategory: (id: number) =>
+    request<void>(`/income-categories/${id}`, { method: "DELETE" }),
+
+  // ── Ahorros ─────────────────────────────────────────────────────────────────
+
+  getSavingAssets: () =>
+    request<SavingAsset[]>("/savings/assets"),
+
+  getSavingBalance: () =>
+    request<SavingBalance[]>("/savings/balance"),
+
+  getSavings: (activoId?: number) =>
+    request<SavingMovement[]>(activoId != null ? `/savings?activoId=${activoId}` : "/savings"),
+
+  createSaving: (data: SavingCreateRequest) =>
+    request<SavingMovement>("/savings", { method: "POST", body: JSON.stringify(data) }),
+
+  updateSaving: (id: number, data: SavingCreateRequest) =>
+    request<SavingMovement>(`/savings/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteSaving: (id: number) =>
+    request<void>(`/savings/${id}`, { method: "DELETE" }),
+
+  // ── Disponible ──────────────────────────────────────────────────────────────
+
+  getAvailable: () =>
+    request<AvailableResponse>("/available"),
+
+  // ── Cedears ─────────────────────────────────────────────────────────────────
+
+  getCedearSPY: () =>
+    request<CedearSPY>("/cedears/spy"),
 };

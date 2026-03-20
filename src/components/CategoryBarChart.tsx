@@ -35,31 +35,35 @@ function formatAmount(amount: number): string {
 
 interface Props {
   categories: GastosByCategoryResponse[];
-  // Use indices so selection works even when categoryId is null/inconsistent
   activeIndices: number[];
   onSelect: (index: number) => void;
+  // Optional ARS-equivalent amounts for bar height/percentage when amounts are in mixed currencies
+  heightAmounts?: number[];
 }
 
 const BAR_MAX_H = 175;
 
-export default function CategoryBarChart({ categories, activeIndices, onSelect }: Props) {
+export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts }: Props) {
   const isDark = useIsDark();
   const colors = isDark ? BAR_COLORS_DARK : BAR_COLORS_LIGHT;
 
   if (!categories.length) return null;
 
-  const max = Math.max(...categories.map((c) => c.amount));
-  const total = categories.reduce((s, c) => s + c.amount, 0);
+  const heights = heightAmounts ?? categories.map(c => c.amount);
+  const max = Math.max(...heights);
+  const totalHeight = heights.reduce((s, v) => s + v, 0);
   const hasSelection = activeIndices.length > 0;
 
   return (
     <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
       {categories.map((cat, i) => {
-        const pct = total > 0 ? Math.round((cat.amount / total) * 100) : 0;
-        const barH = max > 0 ? Math.max(28, Math.round((cat.amount / max) * BAR_MAX_H)) : 28;
+        const h = heights[i] ?? cat.amount;
+        const pct = totalHeight > 0 ? Math.round((h / totalHeight) * 100) : 0;
+        const barH = max > 0 ? Math.max(28, Math.round((h / max) * BAR_MAX_H)) : 28;
         const color = cat.categoryColor ?? colors[i % colors.length];
         const isActive = activeIndices.includes(i);
         const isDimmed = hasSelection && !isActive;
+        const showSymbol = cat.currencySymbol && cat.currencySymbol !== "$";
 
         return (
           <button
@@ -88,7 +92,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect }
               {cat.categoryName}
             </span>
             <span className="text-[11px] font-bold text-foreground tabular">
-              {formatAmount(cat.amount)}
+              {showSymbol ? `${cat.currencySymbol} ` : ""}{formatAmount(cat.amount)}
             </span>
             <span className="text-[10px] text-muted-foreground tabular">{pct}%</span>
           </button>

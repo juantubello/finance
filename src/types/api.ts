@@ -62,6 +62,103 @@ export interface CurrencyResponse {
   symbol: string;
 }
 
+// ── Ingresos ──────────────────────────────────────────────────────────────────
+
+export interface IngresoResponse {
+  id: number;
+  dateTime: string;
+  description: string;
+  amount: number;
+  categoryId: number | null;
+  category: string;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+  currencyId: number;
+  currency: string;
+  currencySymbol: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IngresoCreateRequest {
+  dateTime: string;
+  description: string;
+  amount: number;
+  currencyId: number;
+  categoryId: number | null;
+}
+
+export interface IncomeCategoryResponse {
+  id: number;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+}
+
+// ── Ahorros ───────────────────────────────────────────────────────────────────
+
+export interface SavingAsset {
+  id: number;
+  nombre: string;
+  ticker: string;
+  tipo: "fiat" | "crypto" | "cedear";
+  decimales: number;
+}
+
+export interface SavingBalance {
+  activoId: number;
+  activo: string;
+  ticker: string;
+  tipo: string;
+  decimales: number;
+  balance: number;
+}
+
+export interface SavingMovement {
+  id: number;
+  dateTime: string;
+  activoId: number;
+  activo: string;
+  ticker: string;
+  tipo: string;
+  decimales: number;
+  cantidad: number;
+  precioArs: number | null;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavingCreateRequest {
+  dateTime: string;
+  activoId: number;
+  cantidad: number;
+  precioArs: number | null;
+  description: string;
+}
+
+// ── Cedears ───────────────────────────────────────────────────────────────────
+
+export interface CedearSPY {
+  ticker: string;
+  description: string;
+  lastPrice: number;
+  previousClosing: number;
+  variation: number;
+  ratio: number;
+  lastQuote: string;
+}
+
+// ── Disponible ────────────────────────────────────────────────────────────────
+
+export interface AvailableResponse {
+  totalIngresos: number;
+  totalGastos: number;
+  disponible: number;
+  moneda: string;
+}
+
 export interface GastoCreateRequest {
   dateTime: string;
   description: string;
