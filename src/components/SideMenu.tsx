@@ -27,7 +27,10 @@ export default function SideMenu({ open, onClose }: Props) {
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-72 max-w-[80vw] h-full bg-card shadow-xl flex flex-col pt-6 pb-8 px-4 animate-slide-in-left">
         <div className="flex items-center justify-between mb-8 px-2">
-          <span className="text-lg font-bold text-foreground">Mis Finanzas</span>
+          <div className="flex items-center gap-2">
+            <img src="/icons/icon.png" alt="Mis Finanzas" className="w-10 h-10 rounded-xl" />
+            <span className="text-lg font-bold text-foreground">Mis Finanzas</span>
+          </div>
           <button
             onClick={onClose}
             className="p-2 rounded-full hover:bg-secondary transition-colors"

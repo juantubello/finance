@@ -3,7 +3,6 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
-import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -22,26 +21,17 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-    basicSsl(),
-    mode === "development" && componentTagger(),
+mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
+      devOptions: {
+        enabled: false,
+      },
       workbox: {
         navigateFallbackDenylist: [/^\/~oauth/],
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
       },
-      manifest: {
-        name: "Gastos - Control de Finanzas",
-        short_name: "Gastos",
-        description: "Control de gastos personales",
-        theme_color: "#ffffff",
-        background_color: "#fcfcfd",
-        display: "standalone",
-        start_url: "/",
-        icons: [
-          { src: "/favicon.ico", sizes: "64x64", type: "image/x-icon" },
-        ],
-      },
+      manifest: false,
     }),
   ].filter(Boolean),
   resolve: {
