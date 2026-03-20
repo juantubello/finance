@@ -9,21 +9,21 @@ import SkeletonList from "@/components/SkeletonList";
 import type { IngresoResponse } from "@/types/api";
 import type { GastosByCategoryResponse } from "@/types/api";
 
-const now = new Date();
-
 interface Props {
   onEditIngreso: (i: IngresoResponse) => void;
   onMenu: () => void;
   onSettings: () => void;
+  filterMode: FilterMode;
+  year: number;
+  month: number;
+  onFilterModeChange: (mode: FilterMode) => void;
+  onDateChange: (year: number, month: number) => void;
 }
 
-export default function Ingresos({ onEditIngreso, onMenu, onSettings }: Props) {
+export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
   const navigate = useNavigate();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
-  const [filterMode, setFilterMode] = useState<FilterMode>("month");
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
   const [search, setSearch] = useState("");
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [conversionMode, setConversionMode] = useState<"blue" | "usdc">("blue");
@@ -133,8 +133,8 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings }: Props) {
           mode={filterMode}
           year={year}
           month={month}
-          onModeChange={setFilterMode}
-          onChange={(y, m) => { setYear(y); setMonth(m); }}
+          onModeChange={onFilterModeChange}
+          onChange={onDateChange}
           onMenu={onMenu}
           onSettings={onSettings}
         />

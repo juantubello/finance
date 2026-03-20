@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -21,7 +22,8 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-mode === "development" && componentTagger(),
+    mode === "development" && basicSsl(),
+    mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
       devOptions: {

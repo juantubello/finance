@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import {
   useGastos,
@@ -8,8 +10,6 @@ import {
   useLabels,
   useCategories,
   useAvailable,
-  useIngresos,
-  useIngresosForYear,
 } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
 import CategoryBarChart from "@/components/CategoryBarChart";
@@ -18,8 +18,6 @@ import SkeletonList from "@/components/SkeletonList";
 import type { GastoResponse } from "@/types/api";
 import { Search, BarChart2, List, ChevronDown, X, Plus, SlidersHorizontal } from "lucide-react";
 import type { Label } from "@/types/api";
-
-const now = new Date();
 
 function LabelInput({ allLabels, labelFilters, onToggle }: {
   allLabels: Label[];
@@ -88,12 +86,14 @@ interface Props {
   onEditGasto: (g: GastoResponse) => void;
   onMenu: () => void;
   onSettings: () => void;
+  filterMode: FilterMode;
+  year: number;
+  month: number;
+  onFilterModeChange: (mode: FilterMode) => void;
+  onDateChange: (year: number, month: number) => void;
 }
 
-export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
-  const [filterMode, setFilterMode] = useState<FilterMode>("month");
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+export default function Index({ onEditGasto, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [labelFilters, setLabelFilters] = useState<string[]>([]);
@@ -113,12 +113,6 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   const { data: allLabels = [] } = useLabels();
   const { data: categoryDefs = [] } = useCategories();
   const { data: available } = useAvailable();
-
-  // Ingresos total for the pill (cross-fetch)
-  const ingMonthQ = useIngresos(filterMode === "month" ? year : 0, filterMode === "month" ? month : 0);
-  const ingYearQ = useIngresosForYear(filterMode === "year" ? year : 0);
-  const ingresosData = (filterMode === "year" ? ingYearQ.data : ingMonthQ.data) ?? [];
-  const ingresosTotal = useMemo(() => ingresosData.reduce((s, i) => s + i.amount, 0), [ingresosData]);
 
   // categoryId → hex color from the canonical categories list
   const categoryColorMap = useMemo(() => {
@@ -198,10 +192,12 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
     const filtered = selectedCurrencyId === null
       ? allCategories
       : allCategories.filter(c => c.currencyId === selectedCurrencyId);
-    return filtered.map(c => ({
-      ...c,
-      categoryColor: c.categoryColor ?? categoryColorMap.get(c.categoryId) ?? null,
-    }));
+    return filtered
+      .map(c => ({
+        ...c,
+        categoryColor: c.categoryColor ?? categoryColorMap.get(c.categoryId) ?? null,
+      }))
+      .sort((a, b) => b.amount - a.amount);
   }, [allCategories, selectedCurrencyId, categoryColorMap]);
 
   const activeCategories = useMemo(() => {
@@ -265,10 +261,10 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
   // Map categoryId/name → bar color
 
   const handleDateChange = (y: number, m: number) => {
-    setYear(y); setMonth(m); setActiveIndices([]);
+    onDateChange(y, m); setActiveIndices([]);
   };
   const handleModeChange = (mode: FilterMode) => {
-    setFilterMode(mode); setActiveIndices([]);
+    onFilterModeChange(mode); setActiveIndices([]);
   };
   const handleCategorySelect = (index: number) => {
     setActiveIndices((prev) =>
@@ -312,11 +308,31 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
     return { symbol: selectedCurrency?.symbol ?? "", total: sum, count: filtered.length };
   }, [filtered, hasAdvancedFilter, selectedCurrency]);
 
+  // Group filtered expenses by date (for desktop view)
+  const groupedFiltered = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const map = new Map<string, typeof filtered>();
+    for (const g of filtered) {
+      const key = g.dateTime.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(g);
+    }
+    return Array.from(map.entries()).map(([key, items]) => {
+      const d = new Date(key + "T12:00:00");
+      const label =
+        d.getTime() === today.getTime() ? "Hoy" :
+        d.getTime() === yesterday.getTime() ? "Ayer" :
+        format(d, "d 'de' MMMM", { locale: es });
+      return { label, items };
+    });
+  }, [filtered]);
+
   return (
-    <div className="flex flex-col h-[100dvh] lg:flex-row lg:max-w-5xl lg:mx-auto animate-page-from-left">
+    <div className="flex flex-col h-[100dvh] lg:flex-row lg:bg-muted/30 animate-page-from-left">
 
       {/* ── Left panel (top on mobile, sidebar on desktop) ── */}
-      <div className="flex-shrink-0 lg:w-[400px] lg:h-full lg:flex lg:flex-col lg:border-r lg:border-border lg:overflow-y-auto">
+      <div className="flex-shrink-0 lg:w-1/2 lg:h-full lg:flex lg:flex-col lg:border-r lg:border-border lg:overflow-y-auto lg:bg-background">
         <DateFilter
           mode={filterMode}
           year={year}
@@ -396,7 +412,7 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
       </div>
 
       {/* ── Right panel (bottom on mobile, main content on desktop) ── */}
-      <div className="flex-1 flex flex-col min-h-0 lg:h-full">
+      <div className="flex-1 flex flex-col min-h-0 lg:h-full lg:bg-background">
 
         {/* Search + currency filter + chart toggle */}
         {(
@@ -597,13 +613,25 @@ export default function Index({ onEditGasto, onMenu, onSettings }: Props) {
             <SkeletonList />
           ) : (
             <div className="animate-fade-in">
-              {filtered.map((g) => (
-                <ExpenseRow
-                  key={g.id}
-                  gasto={g}
-                  onClick={() => onEditGasto(g)}
-                />
-              ))}
+              {/* Mobile: flat list */}
+              <div className="lg:hidden">
+                {filtered.map((g) => (
+                  <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} />
+                ))}
+              </div>
+              {/* Desktop: grouped by date */}
+              <div className="hidden lg:block">
+                {groupedFiltered.map(({ label, items }) => (
+                  <div key={label}>
+                    <div className="px-5 py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+                    </div>
+                    {items.map((g) => (
+                      <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} />
+                    ))}
+                  </div>
+                ))}
+              </div>
               {filtered.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-12">
                   {activeCategories

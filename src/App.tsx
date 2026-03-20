@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import type { FilterMode } from "@/components/DateFilter";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SideMenu from "@/components/SideMenu";
@@ -30,6 +31,8 @@ export function applyTheme(theme: Theme) {
   localStorage.setItem("theme", theme);
 }
 
+const now = new Date();
+
 function AppLayout() {
   const location = useLocation();
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
@@ -37,6 +40,11 @@ function AppLayout() {
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem("theme") as Theme | null) ?? "light";
   });
+
+  // ── Shared date filter state ───────────────────────────────────────────────
+  const [filterMode, setFilterMode] = useState<FilterMode>("month");
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
 
   // ── Gasto modal ────────────────────────────────────────────────────────────
   const [gastoModalOpen, setGastoModalOpen] = useState(false);
@@ -99,11 +107,11 @@ function AppLayout() {
       <SideMenu open={sideMenuOpen} onClose={() => setSideMenuOpen(false)} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
       <Routes>
-        <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
+        <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
         <Route path="/add" element={<AddExpense />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/category-rules" element={<CategoryRules />} />
-        <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
+        <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
         <Route path="/ahorros" element={<Ahorros onEditMovimiento={openAhorroEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="/estadisticas" element={<Estadisticas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="*" element={<NotFound />} />
