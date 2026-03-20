@@ -1,0 +1,6 @@
+services:
+  frontend:
+    build: .
+    ports:
+      - "9797:80"
+    restart: unless-stopped
