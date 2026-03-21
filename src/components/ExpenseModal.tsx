@@ -94,22 +94,23 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
 
   const datePickerRef = useRef<HTMLDivElement>(null);
   const currencyBtnRef = useRef<HTMLButtonElement>(null);
+  // Tracks whether the user manually picked a category — if so, don't override with auto-detection.
+  const categoryManuallySet = useRef(false);
 
   useEffect(() => {
     if (gasto) return;
+    if (categoryManuallySet.current) return;
+    if (categoryRules.length === 0) return; // rules not loaded yet, wait
     const match = detectCategoryFromDescription(description, categoryRules);
     if (match !== null) {
       setCategoryId(match.categoryId);
       setAutoCategoryKeyword(match.keyword);
-    } else if (autoCategoryKeyword !== null && categoryRules.length > 0) {
-      // Only clear the auto-category if rules are actually loaded.
-      // If rules are empty (still fetching), don't undo a category that was
-      // already set (e.g. by the direct detection in handleVoiceConfirm).
+    } else if (autoCategoryKeyword !== null) {
+      // Description changed and no longer matches the auto-detected keyword → clear
       setCategoryId(null);
       setAutoCategoryKeyword(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [description]);
+  }, [description, categoryRules]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   useEffect(() => {
@@ -135,6 +136,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
 
   const handleVoiceConfirm = (transcript: string) => {
     setVoiceOpen(false);
+    categoryManuallySet.current = false; // voice input → allow auto-detection
     const multi = parseMultipleItems(transcript);
     let newDesc = "";
     if (multi) {
@@ -425,7 +427,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
                     {categories.map(c => (
                       <button
                         key={c.id}
-                        onClick={() => { setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
+                        onClick={() => { categoryManuallySet.current = true; setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                           c.id != null && categoryId === c.id
                             ? "bg-primary text-primary-foreground shadow-subtle"
