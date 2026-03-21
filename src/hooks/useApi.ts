@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { GastoCreateRequest, GastosByCategoryResponse, CategoryCreateRequest, IngresoCreateRequest, SavingCreateRequest, CedearSPY } from "@/types/api";
+import type { GastoCreateRequest, GastosByCategoryResponse, CategoryCreateRequest, IngresoCreateRequest, SavingCreateRequest, CedearSPY, CardStatementSaveRequest, CardCategoryDto } from "@/types/api";
 
 export function useGastos(year: number, month: number) {
   return useQuery({
@@ -361,5 +361,158 @@ export function useUSDCARS() {
     },
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+// ── Tarjetas ───────────────────────────────────────────────────────────────────
+
+export function useCardStatement(cardType: "VISA" | "MASTERCARD", year: number, month: number) {
+  return useQuery({
+    queryKey: ["cardStatement", cardType, year, month],
+    queryFn: () => api.getCardStatement(cardType, year, month),
+    enabled: year > 0 && month > 0,
+  });
+}
+
+export function useCardExpenses(statementId: number | undefined) {
+  return useQuery({
+    queryKey: ["cardExpenses", statementId],
+    queryFn: () => api.getCardExpenses(statementId!),
+    enabled: statementId != null,
+  });
+}
+
+export function useSaveStatement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ data, pdfFile }: { data: CardStatementSaveRequest; pdfFile: File }) =>
+      api.saveStatement(data, pdfFile),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cardStatement"] });
+      qc.invalidateQueries({ queryKey: ["cardExpenses"] });
+    },
+  });
+}
+
+export function useDeleteStatement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteStatement(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cardStatement"] });
+      qc.invalidateQueries({ queryKey: ["cardExpenses"] });
+    },
+  });
+}
+
+export function useCards() {
+  return useQuery({ queryKey: ["cards"], queryFn: api.getCards, staleTime: 5 * 60 * 1000 });
+}
+
+export function useCreateCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; bank: string; type: string }) => api.createCard(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cards"] }),
+  });
+}
+
+export function useUpdateCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name: string; bank: string; type: string } }) => api.updateCard(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cards"] }),
+  });
+}
+
+export function useDeleteCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCard(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cards"] }),
+  });
+}
+
+export function useCardCategories() {
+  return useQuery({ queryKey: ["cardCategories"], queryFn: api.getCardCategories, staleTime: 5 * 60 * 1000 });
+}
+
+export function useCreateCardCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<CardCategoryDto, "id">) => api.createCardCategory(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategories"] }),
+  });
+}
+
+export function useUpdateCardCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Omit<CardCategoryDto, "id"> }) => api.updateCardCategory(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategories"] }),
+  });
+}
+
+export function useDeleteCardCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCardCategory(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategories"] }),
+  });
+}
+
+export function useCardCategoryRules() {
+  return useQuery({ queryKey: ["cardCategoryRules"], queryFn: api.getCardCategoryRules, staleTime: 60 * 1000 });
+}
+
+export function useCreateCardCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { keyword: string; categoryId: number; priority: number }) => api.createCardCategoryRule(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategoryRules"] }),
+  });
+}
+
+export function useUpdateCardCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { keyword: string; categoryId: number; priority: number } }) => api.updateCardCategoryRule(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategoryRules"] }),
+  });
+}
+
+export function useDeleteCardCategoryRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCardCategoryRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cardCategoryRules"] }),
+  });
+}
+
+export function useLogoRules() {
+  return useQuery({ queryKey: ["logoRules"], queryFn: api.getLogoRules, staleTime: 60 * 1000 });
+}
+
+export function useCreateLogoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { keyword: string; logoUrl: string; priority: number }) => api.createLogoRule(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logoRules"] }),
+  });
+}
+
+export function useUpdateLogoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { keyword: string; logoUrl: string; priority: number } }) => api.updateLogoRule(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logoRules"] }),
+  });
+}
+
+export function useDeleteLogoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteLogoRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logoRules"] }),
   });
 }

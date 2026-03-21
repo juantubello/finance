@@ -173,3 +173,99 @@ export interface CategoryCreateRequest {
   icon?: string | null;
   color?: string | null;
 }
+
+// ── Tarjetas ──────────────────────────────────────────────────────────────────
+
+export interface CardExpenseParsed {
+  cardholderName: string;
+  date: string;
+  description: string;
+  installmentNumber: number | null;
+  installmentTotal: number | null;
+  amountArs: number | null;
+  amountUsd: number | null;
+}
+
+export interface CardStatementParsed {
+  cardType: "VISA" | "MASTERCARD";
+  statementMonth: number;
+  statementYear: number;
+  closeDate: string;
+  dueDate: string;
+  nextCloseDate: string;
+  nextDueDate: string;
+  expenses: CardExpenseParsed[];
+}
+
+export interface CardStatement {
+  id: number;
+  cardId: number;
+  cardType: "VISA" | "MASTERCARD";
+  statementMonth: number;
+  statementYear: number;
+  closeDate: string;
+  dueDate: string;
+  nextCloseDate: string;
+  nextDueDate: string;
+  exchangeRateUsd: number;
+  pdfPath: string | null;
+}
+
+export interface CardExpense {
+  id: number;
+  statementId: number;
+  cardholderName: string;
+  date: string;
+  description: string;
+  installmentNumber: number | null;
+  installmentTotal: number | null;
+  amountArs: number | null;
+  amountUsd: number | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+}
+
+export interface CardStatementSaveRequest {
+  cardId: number;
+  statementMonth: number;
+  statementYear: number;
+  closeDate: string;
+  dueDate: string;
+  nextCloseDate: string;
+  nextDueDate: string;
+  exchangeRateUsd: number;
+  expenses: CardExpenseParsed[];
+}
+
+export interface CardDto {
+  id: number;
+  name: string;
+  bank: string;
+  type: "VISA" | "MASTERCARD";
+  createdAt: string;
+}
+
+export interface CardCategoryDto {
+  id: number;
+  name: string;
+  description: string | null;
+  color: string | null;
+  logoUrl: string | null;
+}
+
+export interface CardCategoryRuleDto {
+  id: number;
+  keyword: string;
+  categoryId: number;
+  categoryName: string;
+  priority: number;
+}
+
+export interface LogoRuleDto {
+  id: number;
+  keyword: string;
+  logoUrl: string;
+  priority: number;
+}

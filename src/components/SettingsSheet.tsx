@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash } from "lucide-react";
+import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash, CreditCard } from "lucide-react";
+import CardConfigSheet from "@/components/CardConfigSheet";
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryRules, useCreateCategoryRule, useDeleteCategoryRule } from "@/hooks/useApi";
 import type { CategoryResponse } from "@/types/api";
 import type { Theme } from "@/App";
@@ -410,6 +411,7 @@ function PurgeButton() {
 export default function SettingsSheet({ open, onClose, theme, onThemeChange }: Props) {
   const [view, setView] = useState<View>("main");
   const [editingCategory, setEditingCategory] = useState<CategoryResponse | null>(null);
+  const [cardConfigOpen, setCardConfigOpen] = useState(false);
 
   const handleClose = () => {
     setView("main");
@@ -428,6 +430,8 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
   if (!open) return null;
 
   return (
+    <>
+    <CardConfigSheet open={cardConfigOpen} onClose={() => setCardConfigOpen(false)} />
     <div className="fixed inset-0 z-[60] flex items-end justify-center">
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={handleClose} />
       <div className="relative w-full max-w-lg bg-card rounded-t-3xl shadow-card animate-slide-up p-6 pb-10 max-h-[94vh] flex flex-col">
@@ -456,6 +460,14 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
               >
                 <Zap size={20} className="text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground flex-1">Reglas automáticas</span>
+                <ChevronRight size={16} className="text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setCardConfigOpen(true)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary transition-colors text-left"
+              >
+                <CreditCard size={20} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground flex-1">Configuración tarjetas</span>
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>
               {/* Theme toggle */}
@@ -506,5 +518,6 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
         </div>
       </div>
     </div>
+    </>
   );
 }

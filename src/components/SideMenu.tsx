@@ -1,4 +1,4 @@
-import { X, Home, PiggyBank, BarChart2 } from "lucide-react";
+import { X, Home, PiggyBank, BarChart2, CreditCard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
 
 const items = [
   { label: "Inicio", icon: Home, to: "/" },
+  { label: "Tarjetas", icon: CreditCard, to: "/tarjetas" },
   { label: "Ahorros", icon: PiggyBank, to: "/ahorros" },
   { label: "Estadísticas", icon: BarChart2, to: "/estadisticas" },
 ];

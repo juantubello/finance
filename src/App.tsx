@@ -18,7 +18,13 @@ import CategoryRules from "./pages/CategoryRules";
 import Ingresos from "./pages/Ingresos";
 import Ahorros from "./pages/Ahorros";
 import Estadisticas from "./pages/Estadisticas";
+import Tarjetas from "./pages/Tarjetas";
 import NotFound from "./pages/NotFound";
+import CardConfig from "./pages/CardConfig";
+import CardCategories from "./pages/CardCategories";
+import CardCategoryRules from "./pages/CardCategoryRules";
+import LogoRules from "./pages/LogoRules";
+import CardsList from "./pages/CardsList";
 import type { GastoResponse, IngresoResponse, SavingMovement } from "@/types/api";
 import { parseMultipleItems, parseVoiceInput } from "@/lib/voiceParser";
 
@@ -112,15 +118,21 @@ function AppLayout() {
         <Route path="/categories" element={<Categories />} />
         <Route path="/category-rules" element={<CategoryRules />} />
         <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
+        <Route path="/tarjetas" element={<Tarjetas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
+        <Route path="/cards/config" element={<CardConfig />} />
+        <Route path="/cards/config/categories" element={<CardCategories />} />
+        <Route path="/cards/config/category-rules" element={<CardCategoryRules />} />
+        <Route path="/cards/config/logo-rules" element={<LogoRules />} />
+        <Route path="/cards/config/cards" element={<CardsList />} />
         <Route path="/ahorros" element={<Ahorros onEditMovimiento={openAhorroEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="/estadisticas" element={<Estadisticas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <VoiceOverlay open={voiceAddOpen} onCancel={() => setVoiceAddOpen(false)} onConfirm={handleVoiceAddConfirm} />
       <FloatingActionButton onAdd={handleAdd} onVoice={() => setVoiceAddOpen(true)} />
-      <ExpenseModal key={gastoModalKey} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} />
-      <IngresoModal key={ingresoModalKey} open={ingresoModalOpen} onClose={closeIngreso} ingreso={editIngreso} defaultCategoryId={ingresoDefaultCategoryId} />
-      <AhorroModal key={ahorroModalKey} open={ahorroModalOpen} onClose={closeAhorro} movimiento={editMovimiento} />
+      <ExpenseModal key={`gasto-${gastoModalKey}`} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} />
+      <IngresoModal key={`ingreso-${ingresoModalKey}`} open={ingresoModalOpen} onClose={closeIngreso} ingreso={editIngreso} defaultCategoryId={ingresoDefaultCategoryId} />
+      <AhorroModal key={`ahorro-${ahorroModalKey}`} open={ahorroModalOpen} onClose={closeAhorro} movimiento={editMovimiento} />
     </>
   );
 }
@@ -129,7 +141,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppLayout />
       </BrowserRouter>
     </TooltipProvider>

@@ -17,6 +17,14 @@ import type {
   SavingCreateRequest,
   AvailableResponse,
   CedearSPY,
+  CardStatementParsed,
+  CardStatement,
+  CardExpense,
+  CardStatementSaveRequest,
+  CardDto,
+  CardCategoryDto,
+  CardCategoryRuleDto,
+  LogoRuleDto,
 } from "@/types/api";
 
 // En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
@@ -226,4 +234,87 @@ export const api = {
 
   getCedearSPY: () =>
     request<CedearSPY>("/cedears/spy"),
+
+  // ── Tarjetas ─────────────────────────────────────────────────────────────────
+
+  parseStatement: async (pdf: File): Promise<CardStatementParsed> => {
+    const form = new FormData();
+    form.append("pdf", pdf);
+    const res = await fetch(`${BASE}/cards/statements/parse`, {
+      method: "POST",
+      headers: {
+        "CF-Access-Client-Id": import.meta.env.VITE_CF_CLIENT_ID ?? "",
+        "CF-Access-Client-Secret": import.meta.env.VITE_CF_CLIENT_SECRET ?? "",
+      },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+
+  getCardStatement: async (cardType: string, year: number, month: number): Promise<CardStatement | null> => {
+    const res = await fetch(`${BASE}/cards/statements?cardType=${cardType}&year=${year}&month=${month}`, {
+      headers: {
+        "CF-Access-Client-Id": import.meta.env.VITE_CF_CLIENT_ID ?? "",
+        "CF-Access-Client-Secret": import.meta.env.VITE_CF_CLIENT_SECRET ?? "",
+      },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  },
+
+  getStatementPdfUrl: (statementId: number): string =>
+    `${BASE}/cards/statements/${statementId}/pdf`,
+
+  deleteStatement: (id: number) =>
+    request<void>(`/cards/statements/${id}`, { method: "DELETE" }),
+
+  getCardExpenses: (statementId: number): Promise<CardExpense[]> =>
+    request<CardExpense[]>(`/cards/statements/${statementId}/expenses`),
+
+  saveStatement: async (data: CardStatementSaveRequest, pdfFile: File): Promise<{ statementId: number; pdfPath: string }> => {
+    const form = new FormData();
+    form.append("pdf", pdfFile);
+    form.append("data", JSON.stringify(data));
+    const res = await fetch(`${BASE}/cards/statements`, {
+      method: "POST",
+      headers: {
+        "CF-Access-Client-Id": import.meta.env.VITE_CF_CLIENT_ID ?? "",
+        "CF-Access-Client-Secret": import.meta.env.VITE_CF_CLIENT_SECRET ?? "",
+      },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+
+  getCards: () => request<CardDto[]>("/cards"),
+  createCard: (data: { name: string; bank: string; type: string }) =>
+    request<{ id: number }>("/cards", { method: "POST", body: JSON.stringify(data) }),
+  updateCard: (id: number, data: { name: string; bank: string; type: string }) =>
+    request<{ id: number }>(`/cards/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteCard: (id: number) => request<void>(`/cards/${id}`, { method: "DELETE" }),
+
+  getCardCategories: () => request<CardCategoryDto[]>("/cards/categories"),
+  createCardCategory: (data: Omit<CardCategoryDto, "id">) =>
+    request<{ id: number }>("/cards/categories", { method: "POST", body: JSON.stringify(data) }),
+  updateCardCategory: (id: number, data: Omit<CardCategoryDto, "id">) =>
+    request<{ id: number }>(`/cards/categories/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteCardCategory: (id: number) => request<void>(`/cards/categories/${id}`, { method: "DELETE" }),
+
+  getCardCategoryRules: () => request<CardCategoryRuleDto[]>("/cards/category-rules"),
+  createCardCategoryRule: (data: { keyword: string; categoryId: number; priority: number }) =>
+    request<{ id: number }>("/cards/category-rules", { method: "POST", body: JSON.stringify(data) }),
+  updateCardCategoryRule: (id: number, data: { keyword: string; categoryId: number; priority: number }) =>
+    request<{ id: number }>(`/cards/category-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteCardCategoryRule: (id: number) => request<void>(`/cards/category-rules/${id}`, { method: "DELETE" }),
+
+  getLogoRules: () => request<LogoRuleDto[]>("/cards/logo-rules"),
+  createLogoRule: (data: { keyword: string; logoUrl: string; priority: number }) =>
+    request<{ id: number }>("/cards/logo-rules", { method: "POST", body: JSON.stringify(data) }),
+  updateLogoRule: (id: number, data: { keyword: string; logoUrl: string; priority: number }) =>
+    request<{ id: number }>(`/cards/logo-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteLogoRule: (id: number) => request<void>(`/cards/logo-rules/${id}`, { method: "DELETE" }),
 };

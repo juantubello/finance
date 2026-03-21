@@ -417,23 +417,6 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
         {/* Search + currency filter + chart toggle */}
         {(
           <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0">
-            {/* Filter toggle */}
-            <button
-              onClick={() => setShowFilters((v) => !v)}
-              className={`flex-shrink-0 relative flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs font-medium transition-all ${
-                showFilters || hasAdvancedFilter
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <SlidersHorizontal size={14} />
-              {hasAdvancedFilter && (
-                <span className="text-[10px] font-bold">
-                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)}
-                </span>
-              )}
-            </button>
-
             {/* Search */}
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -486,6 +469,23 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               </button>
             )}
 
+            {/* Filter toggle */}
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              className={`flex-shrink-0 relative flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs font-medium transition-all ${
+                showFilters || hasAdvancedFilter
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              <SlidersHorizontal size={14} />
+              {hasAdvancedFilter && (
+                <span className="text-[10px] font-bold">
+                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)}
+                </span>
+              )}
+            </button>
+
           </div>
         )}
 
@@ -493,7 +493,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
         {(
           <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out flex-shrink-0 ${showFilters ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden min-h-0">
-              <div className="mx-5 mb-3 rounded-2xl bg-secondary/60 border border-border/40 overflow-hidden divide-y divide-border/40">
+              <div className="mx-5 mb-3 rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
 
                 {/* Labels */}
                 <div className="px-4 py-3 space-y-2">
@@ -556,23 +556,23 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                 {/* Date range */}
                 <div className="px-4 py-3">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fechas</p>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Desde</label>
                       <input
                         type="date"
                         value={dateFrom}
                         onChange={(e) => setDateFrom(e.target.value)}
-                        className="w-full h-8 px-2 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                        className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                       />
                     </div>
-                    <div className="flex-1">
+                    <div>
                       <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Hasta</label>
                       <input
                         type="date"
                         value={dateTo}
                         onChange={(e) => setDateTo(e.target.value)}
-                        className="w-full h-8 px-2 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                        className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                       />
                     </div>
                   </div>
