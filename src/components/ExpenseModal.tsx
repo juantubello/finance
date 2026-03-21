@@ -11,6 +11,11 @@ import { api } from "@/services/api";
 
 type EntryType = "gasto" | "ingreso" | "ahorro";
 
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseAmountInput(s: string): number {
   if (/\d\.\d{3}/.test(s) || s.includes(",")) {
     return parseFloat(s.replace(/\./g, "").replace(",", "."));
@@ -24,7 +29,7 @@ function formatARS(n: number): string {
 }
 
 function formatDatePill(d: string): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   if (d === today) return "hoy";
   const date = new Date(d + "T12:00:00");
   return date.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
@@ -35,15 +40,16 @@ interface Props {
   onClose: () => void;
   gasto?: GastoResponse | null;
   initialData?: { description?: string; amount?: number } | null;
+  initialEntryType?: EntryType;
 }
 
-export default function ExpenseModal({ open, onClose, gasto, initialData }: Props) {
+export default function ExpenseModal({ open, onClose, gasto, initialData, initialEntryType }: Props) {
   if (!open) return null;
-  return <ExpenseModalInner onClose={onClose} gasto={gasto} initialData={initialData} />;
+  return <ExpenseModalInner onClose={onClose} gasto={gasto} initialData={initialData} initialEntryType={initialEntryType} />;
 }
 
-function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">) {
-  const [entryType, setEntryType] = useState<EntryType>("gasto");
+function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Omit<Props, "open">) {
+  const [entryType, setEntryType] = useState<EntryType>(initialEntryType ?? "gasto");
   const queryClient = useQueryClient();
   const { data: categories = [], isLoading: loadingCats } = useCategories();
   const { data: currencies = [], isLoading: loadingCurrencies } = useCurrencies();
@@ -63,7 +69,9 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
 
   const [description, setDescription] = useState(gasto?.description ?? initialData?.description ?? "");
   const [amount, setAmount] = useState(gasto ? String(gasto.amount) : initialData?.amount ? String(initialData.amount) : "");
-  const [categoryId, setCategoryId] = useState<number | null>(gasto?.categoryId ?? null);
+  const [categoryId, setCategoryId] = useState<number | null>(
+    gasto?.categoryId ?? (initialEntryType === "ingreso" ? 11 : initialEntryType === "ahorro" ? 12 : null)
+  );
   const [currencyId, setCurrencyId] = useState<number | null>(
     gasto?.currencyId != null ? Number(gasto.currencyId) : (currencies[0]?.id ?? null)
   );
@@ -71,7 +79,7 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
   useEffect(() => {
     if (currencyId === null && currencies.length > 0) setCurrencyId(currencies[0].id);
   }, [currencies, currencyId]);
-  const [dateTime, setDateTime] = useState(gasto ? gasto.dateTime.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [dateTime, setDateTime] = useState(gasto ? gasto.dateTime.slice(0, 10) : todayLocal());
   const [error, setError] = useState<string | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [amountFocused, setAmountFocused] = useState(false);
@@ -93,7 +101,10 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
     if (match !== null) {
       setCategoryId(match.categoryId);
       setAutoCategoryKeyword(match.keyword);
-    } else if (autoCategoryKeyword !== null) {
+    } else if (autoCategoryKeyword !== null && categoryRules.length > 0) {
+      // Only clear the auto-category if rules are actually loaded.
+      // If rules are empty (still fetching), don't undo a category that was
+      // already set (e.g. by the direct detection in handleVoiceConfirm).
       setCategoryId(null);
       setAutoCategoryKeyword(null);
     }
@@ -125,13 +136,29 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
   const handleVoiceConfirm = (transcript: string) => {
     setVoiceOpen(false);
     const multi = parseMultipleItems(transcript);
+    let newDesc = "";
     if (multi) {
+      newDesc = multi.description;
       setDescription(multi.description);
       setAmount(String(multi.totalAmount));
     } else {
       const parsed = parseVoiceInput(transcript);
       if (parsed.amount) setAmount(String(parsed.amount));
-      if (parsed.description) setDescription(parsed.description);
+      if (parsed.description) {
+        newDesc = parsed.description;
+        setDescription(parsed.description);
+      }
+    }
+    // Run category detection immediately with the resolved description.
+    // The useEffect only fires when description state changes, but if categoryRules
+    // loaded while the voice overlay was open the effect won't re-run after this
+    // single setDescription call, so we detect here to guarantee the match.
+    if (newDesc && !gasto) {
+      const match = detectCategoryFromDescription(newDesc, categoryRules);
+      if (match !== null) {
+        setCategoryId(match.categoryId);
+        setAutoCategoryKeyword(match.keyword);
+      }
     }
   };
 
@@ -154,6 +181,10 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
     if (saving) return;
     if (!description.trim() || !amount) {
       setError("Completá descripción y monto");
+      return;
+    }
+    if (entryType === "gasto" && !categoryId) {
+      setError("Seleccioná una categoría");
       return;
     }
     if (entryType !== "ahorro" && !currencyId) {
@@ -332,7 +363,11 @@ function ExpenseModalInner({ onClose, gasto, initialData }: Omit<Props, "open">)
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="¿En qué gastaste?"
+              placeholder={
+                entryType === "ingreso" ? "¿Qué ingreso recibiste?" :
+                entryType === "ahorro"  ? "¿Qué activo compraste?" :
+                "¿En qué gastaste?"
+              }
               rows={1}
               className="w-full text-[1.35rem] font-bold leading-snug text-foreground bg-transparent outline-none placeholder:text-muted-foreground/30 mb-4 resize-none overflow-hidden"
               style={{ fieldSizing: "content" } as React.CSSProperties}

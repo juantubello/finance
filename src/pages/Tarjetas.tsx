@@ -9,9 +9,9 @@ import CategoryBarChart from "@/components/CategoryBarChart";
 import SkeletonList from "@/components/SkeletonList";
 import StatementUploadModal from "@/components/StatementUploadModal";
 import PdfViewerModal from "@/components/PdfViewerModal";
-import { useCardStatement, useCardExpenses, useDeleteStatement } from "@/hooks/useApi";
+import { useCardStatement, useCardExpenses, useDeleteStatement, useCardCategoryRules, useCardCategories } from "@/hooks/useApi";
 import { api } from "@/services/api";
-import type { CardExpense, CardStatement, GastosByCategoryResponse } from "@/types/api";
+import type { CardExpense, CardStatement, GastosByCategoryResponse, CardCategoryRuleDto, CardCategoryDto } from "@/types/api";
 
 type CardType = "VISA" | "MASTERCARD";
 type CardholderFilter = "Todos" | "Juan" | "Camila";
@@ -38,7 +38,7 @@ function ExpenseDetailSheet({ expense, statement, onClose }: {
   const categoryColor = expense.categoryColor ?? "#e5e7eb";
   const isUsd = expense.amountUsd != null;
   const arsEquiv = isUsd && expense.amountUsd != null
-    ? Math.round(expense.amountUsd * statement.exchangeRateUsd / 10000)
+    ? Math.round(expense.amountUsd * statement.exchangeRateUsd / 100)
     : null;
 
   const amountDisplay = expense.amountArs != null
@@ -112,13 +112,17 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 
 // ─── Expense row ──────────────────────────────────────────────────────────────
 
-function CardExpenseRow({ expense, onClick }: { expense: CardExpense; onClick: () => void }) {
+function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardExpense; exchangeRateUsd?: number; onClick: () => void }) {
   const categoryColor = expense.categoryColor ?? "#e5e7eb";
+  const isUsd = expense.amountUsd != null;
   const amountDisplay = expense.amountArs != null
     ? `$ ${(expense.amountArs / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-    : expense.amountUsd != null
-    ? `USD ${(expense.amountUsd / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+    : isUsd
+    ? `USD ${(expense.amountUsd! / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
     : "—";
+  const arsEquiv = isUsd && expense.amountUsd != null && exchangeRateUsd
+    ? Math.round(expense.amountUsd * exchangeRateUsd / 100)
+    : null;
 
   return (
     <button
@@ -131,11 +135,14 @@ function CardExpenseRow({ expense, onClick }: { expense: CardExpense; onClick: (
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1 flex-wrap mb-0.5">
-            {expense.categoryName && (
-              <span className="inline-block text-[9px] font-semibold px-1 py-px rounded-full" style={{ backgroundColor: categoryColor, color: "#374151" }}>
-                {expense.categoryName}
-              </span>
-            )}
+            <span
+              className={`inline-block text-[9px] font-semibold px-1.5 py-px rounded-full ${
+                expense.categoryName ? "" : "bg-secondary text-muted-foreground"
+              }`}
+              style={expense.categoryName ? { backgroundColor: categoryColor, color: "#374151" } : undefined}
+            >
+              {expense.categoryName ?? "Sin categoría"}
+            </span>
             <span className={`text-[9px] font-semibold px-1.5 py-px rounded-full ${
               expense.cardholderName === "Juan"
                 ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
@@ -157,8 +164,13 @@ function CardExpenseRow({ expense, onClick }: { expense: CardExpense; onClick: (
           </div>
         </div>
       </div>
-      <div className="text-sm font-semibold tabular text-expense flex-shrink-0 ml-3">
-        - {amountDisplay}
+      <div className="flex flex-col items-end flex-shrink-0 ml-3">
+        <span className="text-sm font-semibold tabular text-expense">- {amountDisplay}</span>
+        {arsEquiv != null && (
+          <span className="text-[10px] text-muted-foreground tabular">
+            ≈ $ {(arsEquiv / 100).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+          </span>
+        )}
       </div>
     </button>
   );
@@ -210,6 +222,8 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
 
   const { data: statement, isLoading: loadingStatement } = useCardStatement(cardType, year, month);
   const deleteMut = useDeleteStatement();
+  const { data: cardCategoryRules = [] } = useCardCategoryRules();
+  const { data: cardCategories = [] } = useCardCategories();
 
   useEffect(() => { setConfirmDelete(false); }, [statement?.id]);
 
@@ -223,8 +237,44 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   const { data: allExpenses = [], isLoading: loadingExpenses } = useCardExpenses(statement?.id);
   const isLoading = loadingStatement || (!!statement && loadingExpenses);
 
+  // ── Client-side rule application ─────────────────────────────────────────
+  // Rules are applied by the backend at parse time. Expenses uploaded before a rule
+  // was created have categoryId=null. We resolve those client-side so the chart
+  // and rows always reflect the latest rules without re-uploading the statement.
+  const catMap = useMemo(() => {
+    const m = new Map<number, CardCategoryDto>();
+    cardCategories.forEach(c => m.set(c.id, c));
+    return m;
+  }, [cardCategories]);
+
+  const sortedRules = useMemo(
+    () => [...cardCategoryRules].sort((a, b) => a.priority - b.priority),
+    [cardCategoryRules]
+  );
+
+  const resolvedExpenses = useMemo((): CardExpense[] => {
+    if (sortedRules.length === 0) return allExpenses;
+    return allExpenses.map(e => {
+      if (e.categoryId !== null) return e; // already categorised by backend
+      const desc = e.description.toLowerCase();
+      for (const rule of sortedRules) {
+        if (desc.includes(rule.keyword.toLowerCase())) {
+          const cat = catMap.get(rule.categoryId);
+          return {
+            ...e,
+            categoryId: rule.categoryId,
+            categoryName: rule.categoryName,
+            categoryColor: cat?.color ?? null,
+            categoryIcon: null,
+          };
+        }
+      }
+      return e;
+    });
+  }, [allExpenses, sortedRules, catMap]);
+
   const filteredExpenses = useMemo(() => {
-    let list = allExpenses;
+    let list = resolvedExpenses;
     if (cardholderFilter !== "Todos") list = list.filter(e => e.cardholderName === cardholderFilter);
     if (currencyFilter === "ARS") list = list.filter(e => e.amountArs != null);
     if (currencyFilter === "USD") list = list.filter(e => e.amountUsd != null);
@@ -243,14 +293,14 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     else if (sortOrder === "date_desc") list = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     else list = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     return list;
-  }, [allExpenses, cardholderFilter, currencyFilter, search, dateFrom, dateTo, installmentMode, sortOrder]);
+  }, [resolvedExpenses, cardholderFilter, currencyFilter, search, dateFrom, dateTo, installmentMode, sortOrder]);
 
   const chartCategories = useMemo((): GastosByCategoryResponse[] => {
     if (!statement) return [];
     const map = new Map<string, { cat: GastosByCategoryResponse; totalCentavos: number }>();
     for (const e of filteredExpenses) {
       const arsAmount = e.amountArs != null ? e.amountArs
-        : e.amountUsd != null ? Math.round(e.amountUsd * statement.exchangeRateUsd / 10000) : 0;
+        : e.amountUsd != null ? Math.round(e.amountUsd * statement.exchangeRateUsd / 100) : 0;
       const key = String(e.categoryId ?? "_null");
       const existing = map.get(key);
       if (existing) {
@@ -278,6 +328,11 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
       .sort((a, b) => b.cat.amount - a.cat.amount)
       .map(({ cat }) => cat);
   }, [filteredExpenses, statement]);
+
+  const chartLogoUrls = useMemo(
+    () => chartCategories.map(cat => catMap.get(cat.categoryId)?.logoUrl ?? null),
+    [chartCategories, catMap]
+  );
 
   const activeCategories = useMemo(() => {
     if (activeIndices.length === 0) return null;
@@ -534,6 +589,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
               activeIndices={activeIndices}
               privacyMode={privacyMode}
               onSelect={handleCategorySelect}
+              logoUrls={chartLogoUrls}
             />
           )}
         </div>
@@ -685,7 +741,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
                 {/* Mobile */}
                 <div className="lg:hidden">
                   {filtered.map(e => (
-                    <CardExpenseRow key={e.id} expense={e} onClick={() => setSelectedExpense(e)} />
+                    <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpense(e)} />
                   ))}
                 </div>
                 {/* Desktop — grouped by date */}
@@ -696,7 +752,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
                       </div>
                       {items.map(e => (
-                        <CardExpenseRow key={e.id} expense={e} onClick={() => setSelectedExpense(e)} />
+                        <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpense(e)} />
                       ))}
                     </div>
                   ))}

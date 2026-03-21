@@ -6,6 +6,11 @@ import { useIncomeCategories, useCurrencies, useCreateIngreso, useUpdateIngreso,
 const DEFAULT_INGRESO_CATEGORY_ID = 11; // Sueldo
 const DEFAULT_AHORRO_CATEGORY_ID = 12;  // Ahorro
 
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseAmountInput(s: string): number {
   if (/\d\.\d{3}/.test(s) || s.includes(",")) {
     return parseFloat(s.replace(/\./g, "").replace(",", "."));
@@ -19,7 +24,7 @@ function formatARS(n: number): string {
 }
 
 function formatDatePill(d: string): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   if (d === today) return "hoy";
   const date = new Date(d + "T12:00:00");
   return date.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
@@ -52,7 +57,7 @@ function IngresoModalInner({ onClose, ingreso, defaultCategoryId }: Omit<Props, 
   const [currencyId, setCurrencyId] = useState<number | null>(
     ingreso?.currencyId != null ? Number(ingreso.currencyId) : (currencies[0]?.id ?? null)
   );
-  const [dateTime, setDateTime] = useState(ingreso ? ingreso.dateTime.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [dateTime, setDateTime] = useState(ingreso ? ingreso.dateTime.slice(0, 10) : todayLocal());
   const [amountFocused, setAmountFocused] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);

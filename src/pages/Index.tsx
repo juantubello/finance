@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useGastos,
   useGastosForYear,
@@ -10,7 +11,12 @@ import {
   useLabels,
   useCategories,
   useAvailable,
+  useDolarBlue,
 } from "@/hooks/useApi";
+import { api } from "@/services/api";
+import { useForexRates } from "@/hooks/useForexRates";
+import { toARS } from "@/utils/currency";
+import type { GastosByCategoryResponse } from "@/types/api";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
 import CategoryBarChart from "@/components/CategoryBarChart";
 import ExpenseRow from "@/components/ExpenseRow";
@@ -110,16 +116,27 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   const isSectionCollapsed = (s: string, active: boolean) => !active && collapsedSections.has(s);
   const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
+
+  // Prefetch ingresos in the background so navigation is instant
+  useEffect(() => {
+    if (filterMode === "month" && year > 0 && month > 0) {
+      queryClient.prefetchQuery({
+        queryKey: ["ingresos", year, month],
+        queryFn: () => api.getIngresos(year, month),
+        staleTime: 60_000,
+      });
+    }
+  }, [year, month, filterMode]);
   const [showChart, setShowChart] = useState(true);
-  const [selectedCurrencyId, setSelectedCurrencyId] = useState<number | null>(null);
-  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
-  const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: allLabels = [] } = useLabels();
   const { data: categoryDefs = [] } = useCategories();
   const { data: available } = useAvailable();
+  const { data: dolarBlue } = useDolarBlue();
+  const { data: forexRates } = useForexRates();
 
   // categoryId → hex color from the canonical categories list
   const categoryColorMap = useMemo(() => {
@@ -144,76 +161,61 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   const allGastos = filterMode === "month" ? monthQuery.data : yearQuery.data;
   const loadingGastos = filterMode === "month" ? monthQuery.isLoading : yearQuery.isLoading;
   const errorGastos = filterMode === "month" ? monthQuery.error : null;
-  const allCategories = filterMode === "month" ? monthCatQuery.data : yearCatQuery.data;
   const loadingCats = filterMode === "month" ? monthCatQuery.isLoading : yearCatQuery.isLoading;
 
-  // Currencies present in the current period's expenses
-  const availableCurrencies = useMemo(() => {
-    if (!allGastos) return [];
-    const map = new Map<number, { id: number; symbol: string; name: string }>();
-    for (const g of allGastos) {
-      if (!map.has(g.currencyId)) {
-        map.set(g.currencyId, { id: g.currencyId, symbol: g.currencySymbol, name: g.currency });
-      }
-    }
-    return Array.from(map.values());
-  }, [allGastos]);
-
-  // Auto-select first currency (ARS) when data loads or period changes
-  useEffect(() => {
-    if (availableCurrencies.length > 0) {
-      const stillValid = selectedCurrencyId !== null &&
-        availableCurrencies.some(c => c.id === selectedCurrencyId);
-      if (!stillValid) setSelectedCurrencyId(availableCurrencies[0].id);
-    }
-  }, [availableCurrencies]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(e.target as Node)) {
-        setCurrencyDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const selectedCurrency = availableCurrencies.find(c => c.id === selectedCurrencyId);
-
-  // Filter gastos by selected currency and enrich with color from categoryDefs
+  // Enrich gastos with color from categoryDefs
   const gastos = useMemo(() => {
     if (!allGastos) return undefined;
-    const filtered = selectedCurrencyId === null
-      ? allGastos
-      : allGastos.filter(g => g.currencyId === selectedCurrencyId);
-    return filtered.map(g => ({
+    return allGastos.map(g => ({
       ...g,
       categoryColor: g.categoryColor ?? (g.categoryId != null ? categoryColorMap.get(g.categoryId) ?? null : null),
     }));
-  }, [allGastos, selectedCurrencyId, categoryColorMap]);
+  }, [allGastos, categoryColorMap]);
 
-  // Filter categories by selected currency and enrich with color from categoryDefs
-  const categories = useMemo(() => {
-    if (!allCategories) return undefined;
-    const filtered = selectedCurrencyId === null
-      ? allCategories
-      : allCategories.filter(c => c.currencyId === selectedCurrencyId);
-    return filtered
-      .map(c => ({
-        ...c,
-        categoryColor: c.categoryColor ?? categoryColorMap.get(c.categoryId) ?? null,
-      }))
-      .sort((a, b) => b.amount - a.amount);
-  }, [allCategories, selectedCurrencyId, categoryColorMap]);
+
+  // Build chart categories from allGastos with ARS-equivalent heights (all currencies combined)
+  const { chartCategories, chartHeightAmounts } = useMemo(() => {
+    if (!allGastos?.length) return { chartCategories: [] as GastosByCategoryResponse[], chartHeightAmounts: [] as number[] };
+    const dolarBlueRate = dolarBlue?.compra;
+    const map = new Map<string, { cat: GastosByCategoryResponse; arsTotal: number }>();
+    for (const g of allGastos) {
+      const arsAmount = toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency);
+      if (arsAmount === null) continue;
+      const key = g.categoryId != null ? `id-${g.categoryId}` : `name-${g.category ?? "sin"}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          cat: {
+            categoryId: g.categoryId ?? -1,
+            categoryName: g.category ?? "Sin categoría",
+            categoryDescription: null,
+            categoryIcon: g.categoryIcon,
+            categoryColor: g.categoryColor ?? (g.categoryId != null ? categoryColorMap.get(g.categoryId) ?? null : null),
+            amount: 0,
+            currencyId: 0,
+            currency: "ARS",
+            currencySymbol: "$",
+          },
+          arsTotal: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      entry.arsTotal += arsAmount;
+      entry.cat.amount = Math.round(entry.arsTotal);
+    }
+    const sorted = Array.from(map.values()).sort((a, b) => b.arsTotal - a.arsTotal);
+    return {
+      chartCategories: sorted.map(e => e.cat),
+      chartHeightAmounts: sorted.map(e => e.arsTotal),
+    };
+  }, [allGastos, categoryColorMap, forexRates, dolarBlue]);
 
   const activeCategories = useMemo(() => {
-    if (!categories || activeIndices.length === 0) return null;
+    if (activeIndices.length === 0) return null;
     return activeIndices
-      .map((i) => categories[i])
+      .map((i) => chartCategories[i])
       .filter(Boolean)
       .map((c) => ({ id: c.categoryId, name: c.categoryName }));
-  }, [categories, activeIndices]);
+  }, [chartCategories, activeIndices]);
 
   const hasAdvancedFilter = labelFilters.length > 0 ||
     descFilters.some(d => d.trim()) ||
@@ -256,19 +258,33 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     return list;
   }, [gastos, activeCategories, search, labelFilters, descFilters, dateFrom, dateTo, sortOrder]);
 
+  const dolarBlueRate = dolarBlue?.compra;
+
+  // Total ARS (all currencies converted) — used in the pill
   const total = useMemo(() => {
-    if (!gastos || gastos.length === 0) return null;
+    if (!allGastos || allGastos.length === 0) return null;
     const source = (hasAdvancedFilter || search.trim() || (activeCategories && activeCategories.length > 0))
       ? filtered
-      : gastos;
-    const sum = source.reduce((s, g) => s + g.amount, 0);
-    return { symbol: selectedCurrency?.symbol ?? "", total: sum };
-  }, [gastos, filtered, selectedCurrency, hasAdvancedFilter, search, activeCategories]);
+      : allGastos;
+    let arsSum = 0;
+    let hasAll = true;
+    for (const g of source) {
+      const ars = toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency);
+      if (ars === null) { hasAll = false; continue; }
+      arsSum += ars;
+    }
+    return { total: arsSum, approximate: !hasAll };
+  }, [allGastos, filtered, hasAdvancedFilter, search, activeCategories, forexRates, dolarBlueRate]);
 
   const selectedSum = useMemo(() => {
-    if (!activeCategories || activeCategories.length === 0 || !gastos) return null;
-    return filtered.reduce((s, g) => s + g.amount, 0);
-  }, [filtered, activeCategories, gastos]);
+    if (!activeCategories || activeCategories.length === 0) return null;
+    let sum = 0;
+    for (const g of filtered) {
+      const ars = toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency);
+      sum += ars ?? g.amount;
+    }
+    return sum;
+  }, [filtered, activeCategories, forexRates, dolarBlueRate]);
 
   // Map categoryId/name → bar color
 
@@ -312,14 +328,17 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   };
 
 
-  const hasChart = loadingCats || (categories && categories.length > 0);
+  const hasChart = loadingCats || chartCategories.length > 0;
 
-  // Filtered total for the filter panel badge
+  // Filtered total for the filter panel badge (ARS-equivalent)
   const filteredTotal = useMemo(() => {
     if (!hasAdvancedFilter) return null;
-    const sum = filtered.reduce((s, g) => s + g.amount, 0);
-    return { symbol: selectedCurrency?.symbol ?? "", total: sum, count: filtered.length };
-  }, [filtered, hasAdvancedFilter, selectedCurrency]);
+    let arsSum = 0;
+    for (const g of filtered) {
+      arsSum += toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency) ?? g.amount;
+    }
+    return { total: arsSum, count: filtered.length };
+  }, [filtered, hasAdvancedFilter, forexRates, dolarBlueRate]);
 
   // Group filtered expenses by date (for desktop view)
   const groupedFiltered = useMemo(() => {
@@ -383,7 +402,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 bg-[#ff5c4d] text-white shadow-sm"
                 >
                   {total
-                    ? `${total.symbol}${mask(total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 }))} ARS`
+                    ? `${total.approximate ? "≈ " : ""}$${mask(total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 }))} ARS`
                     : "— Gastos"}
                 </button>
                 <button
@@ -396,7 +415,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               </div>
               {selectedSum !== null && (
                 <span className="inline-flex items-center mt-1.5 px-3 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
-                  Selec: {total?.symbol}{selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  Selec: ${selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ARS
                 </span>
               )}
             </div>
@@ -417,8 +436,8 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                     </div>
                   ))}
                 </div>
-              ) : categories && categories.length > 0 ? (
-                <CategoryBarChart categories={categories} activeIndices={activeIndices} onSelect={handleCategorySelect} privacyMode={privacyMode} />
+              ) : chartCategories.length > 0 ? (
+                <CategoryBarChart categories={chartCategories} activeIndices={activeIndices} onSelect={handleCategorySelect} privacyMode={privacyMode} heightAmounts={chartHeightAmounts} />
               ) : null}
             </div>
           </div>
@@ -442,34 +461,6 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                 className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
               />
             </div>
-
-            {/* Currency selector — only shown when multiple currencies exist */}
-            {availableCurrencies.length > 1 && (
-              <div className="relative flex-shrink-0" ref={currencyDropdownRef}>
-                <button
-                  onClick={() => setCurrencyDropdownOpen((v) => !v)}
-                  className="flex items-center gap-0.5 h-9 px-3 rounded-xl bg-secondary hover:bg-muted transition-colors"
-                >
-                  <span className="text-sm font-bold text-foreground">{selectedCurrency?.symbol ?? "ARS"}</span>
-                  <ChevronDown size={11} className="text-muted-foreground" />
-                </button>
-                {currencyDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 min-w-[130px]">
-                    {availableCurrencies.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => { setSelectedCurrencyId(c.id); setCurrencyDropdownOpen(false); setActiveIndices([]); }}
-                        className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors hover:bg-secondary ${
-                          c.id === selectedCurrencyId ? "text-primary font-semibold" : "text-foreground"
-                        }`}
-                      >
-                        {c.symbol} — {c.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Chart toggle */}
             {hasChart && (
@@ -613,7 +604,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                     </span>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-bold text-foreground tabular">
-                        {filteredTotal.symbol}{filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                        ${filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
                       </span>
                       <button
                         onClick={clearAllFilters}
@@ -641,7 +632,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               {/* Mobile: flat list */}
               <div className="lg:hidden">
                 {filtered.map((g) => (
-                  <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} />
+                  <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} forexRates={forexRates} dolarBlueRate={dolarBlueRate} privacyMode={privacyMode} />
                 ))}
               </div>
               {/* Desktop: grouped by date */}
@@ -652,7 +643,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
                     </div>
                     {items.map((g) => (
-                      <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} />
+                      <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} forexRates={forexRates} dolarBlueRate={dolarBlueRate} privacyMode={privacyMode} />
                     ))}
                   </div>
                 ))}

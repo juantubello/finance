@@ -40,11 +40,13 @@ interface Props {
   // Optional ARS-equivalent amounts for bar height/percentage when amounts are in mixed currencies
   heightAmounts?: number[];
   privacyMode?: boolean;
+  // Optional image URLs for categories that use logos instead of emoji icons (e.g. card categories)
+  logoUrls?: (string | null | undefined)[];
 }
 
 const BAR_MAX_H = 175;
 
-export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts, privacyMode }: Props) {
+export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts, privacyMode, logoUrls }: Props) {
   const isDark = useIsDark();
   const colors = isDark ? BAR_COLORS_DARK : BAR_COLORS_LIGHT;
 
@@ -64,7 +66,8 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
         const color = cat.categoryColor ?? colors[i % colors.length];
         const isActive = activeIndices.includes(i);
         const isDimmed = hasSelection && !isActive;
-        const showSymbol = cat.currencySymbol && cat.currencySymbol !== "$";
+        const showSymbol = !!cat.currencySymbol;
+        const logoUrl = logoUrls?.[i];
 
         return (
           <button
@@ -75,19 +78,29 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
             }`}
           >
             <div
-              className={`w-[68px] rounded-2xl border-2 border-dashed flex items-end justify-center relative overflow-hidden transition-all ${
+              className={`w-[68px] rounded-2xl border-2 border-dashed relative transition-all ${
                 isActive ? "border-primary" : "border-border"
               }`}
               style={{ height: BAR_MAX_H }}
             >
+              {/* Colored fill — grows from bottom */}
               <div
-                className="w-full rounded-2xl flex items-center justify-center transition-all duration-500"
+                className="absolute bottom-0 w-full rounded-2xl transition-all duration-500"
                 style={{ height: barH, backgroundColor: color }}
-              >
-                {cat.categoryIcon && (
-                  <span className="text-xl leading-none">{cat.categoryIcon}</span>
-                )}
-              </div>
+              />
+              {/* Icon — centered over the fill area, never clipped */}
+              {(logoUrl || cat.categoryIcon) && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none"
+                  style={{ height: Math.max(barH, 44) }}
+                >
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="" className="w-9 h-9 rounded-full object-cover shadow-sm" />
+                  ) : (
+                    <span className="text-xl leading-none">{cat.categoryIcon}</span>
+                  )}
+                </div>
+              )}
             </div>
             <span className="text-[10px] font-semibold text-muted-foreground mt-1 w-full text-center truncate px-1">
               {cat.categoryName}

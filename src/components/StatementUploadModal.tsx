@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X, Upload, Loader2 } from "lucide-react";
 import { api } from "@/services/api";
 import { useSaveStatement, useCards } from "@/hooks/useApi";
+import { useDolarBBVA } from "@/hooks/useDolarBBVA";
 import type { CardStatementParsed } from "@/types/api";
 import { format } from "date-fns";
 
@@ -22,6 +23,14 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
   const pdfFileRef = useRef<File | null>(null);
   const saveMutation = useSaveStatement();
   const { data: cards = [] } = useCards();
+  const { dolarBBVA, isLoading: loadingBBVA } = useDolarBBVA();
+
+  // Auto-fill exchange rate with BBVA rate when preview step is reached
+  useEffect(() => {
+    if (step === "preview" && dolarBBVA && !exchangeRate) {
+      setExchangeRate(String(Math.round(dolarBBVA)));
+    }
+  }, [step, dolarBBVA]);
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -186,9 +195,28 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
-                    Tipo de cambio USD <span className="text-expense">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Tipo de cambio USD <span className="text-expense">*</span>
+                    </label>
+                    {dolarBBVA && (
+                      <button
+                        type="button"
+                        onClick={() => setExchangeRate(String(Math.round(dolarBBVA)))}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:opacity-80 transition-opacity"
+                        style={{ backgroundColor: "#004B99" }}
+                        title="Usar cotización BBVA"
+                      >
+                        <BBVALogo />
+                        <span className="text-[10px] font-bold text-white">
+                          ${Math.round(dolarBBVA).toLocaleString("es-AR")}
+                        </span>
+                      </button>
+                    )}
+                    {loadingBBVA && !dolarBBVA && (
+                      <Loader2 size={11} className="animate-spin text-muted-foreground" />
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 bg-background border border-border rounded-xl px-3 h-10">
                     <span className="text-sm font-semibold text-muted-foreground">$</span>
                     <input
@@ -257,5 +285,13 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+function BBVALogo() {
+  return (
+    <svg viewBox="0 0 40 12" className="h-3 w-auto" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="11" fontFamily="Arial Black, Arial, sans-serif" fontSize="12" fontWeight="900" fill="white" letterSpacing="0.5">BBVA</text>
+    </svg>
   );
 }

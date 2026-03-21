@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCardCategoryRules, useCreateCardCategoryRule, useUpdateCardCategoryRule, useDeleteCardCategoryRule, useCardCategories } from "@/hooks/useApi";
+import { api } from "@/services/api";
 import type { CardCategoryRuleDto } from "@/types/api";
 
 interface FormState {
@@ -21,11 +23,14 @@ export default function CardCategoryRules() {
   const updateMut = useUpdateCardCategoryRule();
   const deleteMut = useDeleteCardCategoryRule();
 
+  const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showNew, setShowNew] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyToast, setApplyToast] = useState<string | null>(null);
 
   const startNew = () => { setForm(emptyForm); setFormError(null); setEditingId(null); setShowNew(true); };
   const startEdit = (r: CardCategoryRuleDto) => {
@@ -59,6 +64,25 @@ export default function CardCategoryRules() {
 
   const isSaving = createMut.isPending || updateMut.isPending;
 
+  const handleApply = async () => {
+    setApplying(true);
+    setApplyToast(null);
+    try {
+      const { updated } = await api.applyCardCategoryRules();
+      const msg = updated === 0
+        ? "No había gastos sin categorizar"
+        : `Se categorizaron ${updated} gasto${updated === 1 ? "" : "s"}`;
+      setApplyToast(msg);
+      // Invalidate card expenses so Tarjetas re-fetches if open
+      queryClient.invalidateQueries({ queryKey: ["cardExpenses"] });
+    } catch {
+      setApplyToast("Error al aplicar las reglas");
+    } finally {
+      setApplying(false);
+      setTimeout(() => setApplyToast(null), 4000);
+    }
+  };
+
   return (
     <div className="pb-28 max-w-lg mx-auto pt-6 px-5">
       <div className="flex items-center gap-3 mb-6">
@@ -66,10 +90,25 @@ export default function CardCategoryRules() {
           <ChevronLeft size={20} className="text-muted-foreground" />
         </button>
         <h1 className="text-lg font-bold text-foreground flex-1">Reglas de categorización</h1>
+        <button
+          onClick={handleApply}
+          disabled={applying}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-secondary text-foreground text-xs font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+          title="Aplicar reglas a gastos sin categoría"
+        >
+          {applying ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          Aplicar
+        </button>
         <button onClick={startNew} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">
           <Plus size={14} /> Nueva
         </button>
       </div>
+
+      {applyToast && (
+        <div className="mb-4 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-sm font-medium text-emerald-600 dark:text-emerald-400 animate-fade-in">
+          {applyToast}
+        </div>
+      )}
 
       {error && <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 text-red-500 text-sm mb-4">Error al cargar las reglas.</div>}
 

@@ -1,13 +1,31 @@
 import { format } from "date-fns";
 import type { GastoResponse } from "@/types/api";
+import type { ForexRates } from "@/hooks/useForexRates";
+import { isARS, isUSD, isExotic, toUSD, toARS } from "@/utils/currency";
 
 interface Props {
   gasto: GastoResponse;
   onClick: () => void;
+  forexRates?: ForexRates;
+  dolarBlueRate?: number; // ARS per USD (compra)
+  privacyMode?: boolean;
 }
 
-export default function ExpenseRow({ gasto, onClick }: Props) {
+export default function ExpenseRow({ gasto, onClick, forexRates, dolarBlueRate, privacyMode }: Props) {
   const categoryColor = gasto.categoryColor ?? "#e5e7eb";
+  const sym = gasto.currencySymbol;
+
+  const arsValue = !isARS(sym)
+    ? toARS(gasto.amount, sym, forexRates, dolarBlueRate, gasto.currency)
+    : null;
+
+  const usdValue = isExotic(sym)
+    ? toUSD(gasto.amount, sym, forexRates, dolarBlueRate, gasto.currency)
+    : null;
+
+  const fmt = (n: number, decimals = 2) =>
+    n.toLocaleString("es-AR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+
   return (
     <button
       onClick={onClick}
@@ -21,10 +39,7 @@ export default function ExpenseRow({ gasto, onClick }: Props) {
           {gasto.category && (
             <span
               className="inline-block text-[9px] font-semibold px-1 py-px rounded-full mb-0.5"
-              style={{
-                backgroundColor: categoryColor,
-                color: "#374151",
-              }}
+              style={{ backgroundColor: categoryColor, color: "#374151" }}
             >
               {gasto.category}
             </span>
@@ -42,8 +57,23 @@ export default function ExpenseRow({ gasto, onClick }: Props) {
           </div>
         </div>
       </div>
-      <div className="text-sm font-semibold tabular text-expense flex-shrink-0 ml-3">
-        - {gasto.currencySymbol} {gasto.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+
+      <div className="flex flex-col items-end flex-shrink-0 ml-3">
+        <div className="text-sm font-semibold tabular text-expense">
+          {privacyMode ? "***" : `- ${sym} ${fmt(gasto.amount)}`}
+        </div>
+        {/* USD equivalent for exotic currencies */}
+        {usdValue !== null && (
+          <div className="text-[10px] text-muted-foreground tabular">
+            {privacyMode ? "—" : `≈ USD ${fmt(usdValue)}`}
+          </div>
+        )}
+        {/* ARS equivalent for all non-ARS currencies */}
+        {arsValue !== null && (
+          <div className="text-[10px] text-muted-foreground tabular">
+            {privacyMode ? "—" : `≈ $${fmt(arsValue, 0)} ARS`}
+          </div>
+        )}
       </div>
     </button>
   );

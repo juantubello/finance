@@ -310,6 +310,7 @@ export const api = {
   updateCardCategoryRule: (id: number, data: { keyword: string; categoryId: number; priority: number }) =>
     request<{ id: number }>(`/cards/category-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteCardCategoryRule: (id: number) => request<void>(`/cards/category-rules/${id}`, { method: "DELETE" }),
+  applyCardCategoryRules: () => request<{ updated: number }>("/cards/category-rules/apply", { method: "POST" }),
 
   getLogoRules: () => request<LogoRuleDto[]>("/cards/logo-rules"),
   createLogoRule: (data: { keyword: string; logoUrl: string; priority: number }) =>

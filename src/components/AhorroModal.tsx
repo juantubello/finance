@@ -3,6 +3,11 @@ import { X, Trash2, Loader2, Check, ChevronDown, TrendingUp, TrendingDown } from
 import type { SavingMovement } from "@/types/api";
 import { useSavingAssets, useCreateSaving, useUpdateSaving, useDeleteSaving } from "@/hooks/useApi";
 
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseCantidad(s: string): number {
   // Handle both decimal comma (0,005197) and decimal point (0.005197)
   // If both present (e.g. "1.234,56"): dots are thousands separators
@@ -13,7 +18,7 @@ function parseCantidad(s: string): number {
 }
 
 function formatDatePill(d: string): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   if (d === today) return "hoy";
   const date = new Date(d + "T12:00:00");
   return date.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
@@ -41,7 +46,7 @@ function AhorroModalInner({ onClose, movimiento }: Omit<Props, "open">) {
   const [cantidad, setCantidad] = useState(movimiento ? String(Math.abs(movimiento.cantidad)) : "");
   const [precioArs, setPrecioArs] = useState(movimiento?.precioArs ? String(movimiento.precioArs) : "");
   const [description, setDescription] = useState(movimiento?.description ?? "");
-  const [dateTime, setDateTime] = useState(movimiento ? movimiento.dateTime.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [dateTime, setDateTime] = useState(movimiento ? movimiento.dateTime.slice(0, 10) : todayLocal());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);

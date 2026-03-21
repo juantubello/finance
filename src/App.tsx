@@ -57,6 +57,7 @@ function AppLayout() {
   const [gastoModalKey, setGastoModalKey] = useState(0);
   const [editGasto, setEditGasto] = useState<GastoResponse | null>(null);
   const [initialData, setInitialData] = useState<{ description?: string; amount?: number } | null>(null);
+  const [initialEntryType, setInitialEntryType] = useState<"gasto" | "ingreso" | "ahorro">("gasto");
   const [voiceAddOpen, setVoiceAddOpen] = useState(false);
 
   // ── Ingreso / Ahorro modal (shared) ───────────────────────────────────────
@@ -73,12 +74,12 @@ function AppLayout() {
   useEffect(() => { applyTheme(theme); }, [theme]);
 
   // Gasto
-  const openGastoAdd = () => { setEditGasto(null); setInitialData(null); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
-  const openGastoEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
+  const openGastoAdd = () => { setEditGasto(null); setInitialData(null); setInitialEntryType("gasto"); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
+  const openGastoEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setInitialEntryType("gasto"); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
   const closeGasto = () => { setGastoModalOpen(false); setEditGasto(null); setInitialData(null); };
 
-  // Ingreso
-  const openIngresoAdd = () => { setEditIngreso(null); setIngresoDefaultCategoryId(11); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
+  // Ingreso (add → reuse ExpenseModal pre-selected as ingreso; edit → IngresoModal)
+  const openIngresoAdd = () => { setEditGasto(null); setInitialData(null); setInitialEntryType("ingreso"); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
   const openIngresoEdit = (i: IngresoResponse) => { setEditIngreso(i); setIngresoDefaultCategoryId(undefined); setIngresoModalKey(k => k + 1); setIngresoModalOpen(true); };
   const closeIngreso = () => { setIngresoModalOpen(false); setEditIngreso(null); };
 
@@ -130,7 +131,7 @@ function AppLayout() {
       </Routes>
       <VoiceOverlay open={voiceAddOpen} onCancel={() => setVoiceAddOpen(false)} onConfirm={handleVoiceAddConfirm} />
       <FloatingActionButton onAdd={handleAdd} onVoice={() => setVoiceAddOpen(true)} />
-      <ExpenseModal key={`gasto-${gastoModalKey}`} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} />
+      <ExpenseModal key={`gasto-${gastoModalKey}`} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} initialEntryType={initialEntryType} />
       <IngresoModal key={`ingreso-${ingresoModalKey}`} open={ingresoModalOpen} onClose={closeIngreso} ingreso={editIngreso} defaultCategoryId={ingresoDefaultCategoryId} />
       <AhorroModal key={`ahorro-${ahorroModalKey}`} open={ahorroModalOpen} onClose={closeAhorro} movimiento={editMovimiento} />
     </>
