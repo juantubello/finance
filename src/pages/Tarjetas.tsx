@@ -58,7 +58,7 @@ function ExpenseDetailSheet({ expense, statement, onClose }: {
               style={{ backgroundColor: expense.logoUrl ? "transparent" : categoryColor + "33" }}
             >
               {expense.logoUrl
-                ? <img src={expense.logoUrl} alt="" className="w-full h-full object-cover rounded-2xl" />
+                ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1.5" />
                 : expense.categoryIcon || "💳"
               }
             </div>
@@ -135,7 +135,7 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg flex-shrink-0 overflow-hidden">
           {expense.logoUrl
-            ? <img src={expense.logoUrl} alt="" className="w-full h-full object-cover" />
+            ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1" />
             : expense.categoryIcon
             ? <span>{expense.categoryIcon}</span>
             : <span>💳</span>
