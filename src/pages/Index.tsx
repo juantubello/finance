@@ -17,6 +17,8 @@ import ExpenseRow from "@/components/ExpenseRow";
 import SkeletonList from "@/components/SkeletonList";
 import type { GastoResponse } from "@/types/api";
 import { Search, BarChart2, List, ChevronDown, X, Plus, SlidersHorizontal } from "lucide-react";
+import { usePrivacyMode } from "@/hooks/usePrivacyMode";
+import PrivacyToggle from "@/components/PrivacyToggle";
 import type { Label } from "@/types/api";
 
 function LabelInput({ allLabels, labelFilters, onToggle }: {
@@ -102,6 +104,11 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"none" | "asc" | "desc" | "date_asc" | "date_desc">("none");
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["labels", "desc", "dates", "sort"]));
+  const toggleSection = (s: string) => setCollapsedSections(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+  const isSectionCollapsed = (s: string, active: boolean) => !active && collapsedSections.has(s);
+  const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
   const navigate = useNavigate();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
@@ -241,8 +248,13 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     if (dateTo) {
       list = list.filter((g) => g.dateTime.slice(0, 10) <= dateTo);
     }
+    if (sortOrder === "asc") list = [...list].sort((a, b) => a.amount - b.amount);
+    else if (sortOrder === "desc") list = [...list].sort((a, b) => b.amount - a.amount);
+    else if (sortOrder === "date_asc") list = [...list].sort((a, b) => a.dateTime.localeCompare(b.dateTime) || a.id - b.id);
+    else if (sortOrder === "date_desc") list = [...list].sort((a, b) => b.dateTime.localeCompare(a.dateTime) || b.id - a.id);
+    else list = [...list].sort((a, b) => b.dateTime.localeCompare(a.dateTime) || b.id - a.id);
     return list;
-  }, [gastos, activeCategories, search, labelFilters, descFilters, dateFrom, dateTo]);
+  }, [gastos, activeCategories, search, labelFilters, descFilters, dateFrom, dateTo, sortOrder]);
 
   const total = useMemo(() => {
     if (!gastos || gastos.length === 0) return null;
@@ -296,6 +308,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     setDescInput("");
     setDateFrom("");
     setDateTo("");
+    setSortOrder("none");
   };
 
 
@@ -341,6 +354,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
           onChange={handleDateChange}
           onMenu={onMenu}
           onSettings={onSettings}
+          extraAction={<PrivacyToggle privacyMode={privacyMode} onToggle={togglePrivacy} />}
         />
 
         {/* Disponible */}
@@ -356,7 +370,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
               <div className="flex items-baseline gap-2 justify-center mb-2">
                 <span className={`text-4xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
-                  {(available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+                  ${mask((available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 }))}
                 </span>
                 <span className="text-sm font-semibold text-muted-foreground">
                   {available?.moneda ?? "ARS"}
@@ -369,7 +383,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 bg-[#ff5c4d] text-white shadow-sm"
                 >
                   {total
-                    ? `${total.symbol}${total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS`
+                    ? `${total.symbol}${mask(total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 }))} ARS`
                     : "— Gastos"}
                 </button>
                 <button
@@ -404,7 +418,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   ))}
                 </div>
               ) : categories && categories.length > 0 ? (
-                <CategoryBarChart categories={categories} activeIndices={activeIndices} onSelect={handleCategorySelect} />
+                <CategoryBarChart categories={categories} activeIndices={activeIndices} onSelect={handleCategorySelect} privacyMode={privacyMode} />
               ) : null}
             </div>
           </div>
@@ -412,7 +426,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
       </div>
 
       {/* ── Right panel (bottom on mobile, main content on desktop) ── */}
-      <div className="flex-1 flex flex-col min-h-0 lg:h-full lg:bg-background">
+      <div className="flex-1 flex flex-col min-h-0 lg:h-full lg:bg-background relative">
 
         {/* Search + currency filter + chart toggle */}
         {(
@@ -481,7 +495,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               <SlidersHorizontal size={14} />
               {hasAdvancedFilter && (
                 <span className="text-[10px] font-bold">
-                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)}
+                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sortOrder !== "none" ? 1 : 0)}
                 </span>
               )}
             </button>
@@ -489,93 +503,106 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
           </div>
         )}
 
-        {/* ── Filter panel ── */}
-        {(
-          <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out flex-shrink-0 ${showFilters ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-            <div className="overflow-hidden min-h-0">
-              <div className="mx-5 mb-3 rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
+        {/* ── Filter panel — absolute overlay ── */}
+        {showFilters && (
+          <div className="absolute left-5 right-5 top-[52px] z-30 shadow-xl rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
 
                 {/* Labels */}
-                <div className="px-4 py-3 space-y-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Etiquetas</p>
-                  {labelFilters.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {labelFilters.map(name => (
-                        <span
-                          key={name}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground"
-                        >
-                          #{name}
-                          <button onClick={() => toggleLabel(name)} className="opacity-70 hover:opacity-100">
-                            <X size={10} />
-                          </button>
-                        </span>
-                      ))}
+                <div className="px-4 py-2">
+                  <button onClick={() => toggleSection("labels")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Etiquetas {labelFilters.length > 0 && <span className="text-primary">({labelFilters.length})</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("labels", labelFilters.length > 0) ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("labels", labelFilters.length > 0) && (
+                    <div className="space-y-2 pb-2">
+                      {labelFilters.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {labelFilters.map(name => (
+                            <span key={name} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground">
+                              #{name}
+                              <button onClick={() => toggleLabel(name)} className="opacity-70 hover:opacity-100"><X size={10} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <LabelInput allLabels={allLabels} labelFilters={labelFilters} onToggle={toggleLabel} />
                     </div>
                   )}
-                  <LabelInput allLabels={allLabels} labelFilters={labelFilters} onToggle={toggleLabel} />
                 </div>
 
                 {/* Description */}
-                <div className="px-4 py-3 space-y-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Descripción</p>
-                  {descFilters.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {descFilters.map(term => (
-                        <span
-                          key={term}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground"
-                        >
-                          {term}
-                          <button onClick={() => removeDescFilter(term)} className="opacity-70 hover:opacity-100">
-                            <X size={10} />
-                          </button>
-                        </span>
-                      ))}
+                <div className="px-4 py-2 border-t border-border/60">
+                  <button onClick={() => toggleSection("desc")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Descripción {descFilters.length > 0 && <span className="text-primary">({descFilters.length})</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("desc", descFilters.length > 0) ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("desc", descFilters.length > 0) && (
+                    <div className="space-y-2 pb-2">
+                      {descFilters.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {descFilters.map(term => (
+                            <span key={term} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground">
+                              {term}
+                              <button onClick={() => removeDescFilter(term)} className="opacity-70 hover:opacity-100"><X size={10} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={descInput}
+                          onChange={(e) => setDescInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") addDescFilter(); }}
+                          placeholder="Agregar palabra clave..."
+                          className="flex-1 h-8 px-3 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/40"
+                        />
+                        <button onClick={addDescFilter} disabled={!descInput.trim()} className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors">
+                          <Plus size={14} />
+                        </button>
+                      </div>
                     </div>
                   )}
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={descInput}
-                      onChange={(e) => setDescInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") addDescFilter(); }}
-                      placeholder="Agregar palabra clave..."
-                      className="flex-1 h-8 px-3 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/40"
-                    />
-                    <button
-                      onClick={addDescFilter}
-                      disabled={!descInput.trim()}
-                      className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
                 </div>
 
                 {/* Date range */}
-                <div className="px-4 py-3">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fechas</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Desde</label>
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-                      />
+                <div className="px-4 py-2 border-t border-border/60">
+                  <button onClick={() => toggleSection("dates")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Fechas {(dateFrom || dateTo) && <span className="text-primary">•</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("dates", !!(dateFrom || dateTo)) ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("dates", !!(dateFrom || dateTo)) && (
+                    <div className="grid grid-cols-2 gap-4 pb-2">
+                      <div>
+                        <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Desde</label>
+                        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Hasta</label>
+                        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground/70 mb-0.5 block">Hasta</label>
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        className="w-full h-8 px-0 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-                      />
+                  )}
+                </div>
+
+                {/* Sort order */}
+                <div className="px-4 py-2 border-t border-border/60">
+                  <button onClick={() => toggleSection("sort")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Ordenar {sortOrder !== "none" && <span className="text-primary">•</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("sort", sortOrder !== "none") ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("sort", sortOrder !== "none") && (
+                    <div className="flex flex-wrap gap-1.5 pb-2">
+                      {(["none", "desc", "asc", "date_desc", "date_asc"] as const).map((opt) => {
+                        const labels: Record<typeof opt, string> = { none: "Predeterminado", desc: "Mayor importe", asc: "Menor importe", date_desc: "Fecha ↓", date_asc: "Fecha ↑" };
+                        return (
+                          <button key={opt} onClick={() => setSortOrder(opt)} className={`h-7 px-3 rounded-full text-[11px] font-semibold transition-all ${sortOrder === opt ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+                            {labels[opt]}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Filtered total + clear */}
@@ -598,8 +625,6 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   </div>
                 )}
 
-              </div>
-            </div>
           </div>
         )}
 

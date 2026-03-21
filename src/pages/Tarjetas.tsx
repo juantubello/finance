@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Upload, CreditCard, FileText, ChevronDown, ChevronUp, SlidersHorizontal, X, Search, Trash2, Check, Loader2 } from "lucide-react";
+import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
+import PrivacyToggle from "@/components/PrivacyToggle";
 import CategoryBarChart from "@/components/CategoryBarChart";
 import SkeletonList from "@/components/SkeletonList";
 import StatementUploadModal from "@/components/StatementUploadModal";
@@ -188,12 +190,18 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   const [cardholderFilter, setCardholderFilter] = useState<CardholderFilter>("Todos");
   const [currencyFilter, setCurrencyFilter] = useState<CurrencyFilter>("Todos");
   const [installmentMode, setInstallmentMode] = useState<InstallmentMode>("todos");
+  const [sortOrder, setSortOrder] = useState<"none" | "asc" | "desc" | "date_asc" | "date_desc">("none");
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["dates", "installment", "sort"]));
+  const toggleSection = (s: string) => setCollapsedSections(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+  const isSectionCollapsed = (s: string, active: boolean) => !active && collapsedSections.has(s);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const [chartCollapsed, setChartCollapsed] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(true);
+  const [chartCollapsed, setChartCollapsed] = useState(true);
+  const [pillReady, setPillReady] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
   const [filterOpen, setFilterOpen] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -229,8 +237,13 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     if (installmentMode === "cuotas") list = list.filter(e => e.installmentNumber != null && e.installmentTotal != null);
     if (installmentMode === "unicos") list = list.filter(e => e.installmentNumber == null || e.installmentTotal == null);
     if (installmentMode === "liberar") list = list.filter(e => e.installmentNumber != null && e.installmentTotal != null && e.installmentNumber === e.installmentTotal);
+    if (sortOrder === "asc") list = [...list].sort((a, b) => (a.amountArs ?? a.amountUsd ?? 0) - (b.amountArs ?? b.amountUsd ?? 0));
+    else if (sortOrder === "desc") list = [...list].sort((a, b) => (b.amountArs ?? b.amountUsd ?? 0) - (a.amountArs ?? a.amountUsd ?? 0));
+    else if (sortOrder === "date_asc") list = [...list].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    else if (sortOrder === "date_desc") list = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    else list = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     return list;
-  }, [allExpenses, cardholderFilter, currencyFilter, search, dateFrom, dateTo, installmentMode]);
+  }, [allExpenses, cardholderFilter, currencyFilter, search, dateFrom, dateTo, installmentMode, sortOrder]);
 
   const chartCategories = useMemo((): GastosByCategoryResponse[] => {
     if (!statement) return [];
@@ -294,7 +307,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
 
   const hasActiveFilters = cardholderFilter !== "Todos" || currencyFilter !== "Todos" ||
     search.trim() !== "" || dateFrom !== "" || dateTo !== "" ||
-    installmentMode !== "todos" || activeIndices.length > 0;
+    installmentMode !== "todos" || activeIndices.length > 0 || sortOrder !== "none";
 
   const activeFilterCount = [
     cardholderFilter !== "Todos",
@@ -304,6 +317,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     dateTo !== "",
     installmentMode !== "todos",
     activeIndices.length > 0,
+    sortOrder !== "none",
   ].filter(Boolean).length;
 
   const clearFilters = () => {
@@ -314,11 +328,14 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     setDateTo("");
     setInstallmentMode("todos");
     setActiveIndices([]);
+    setSortOrder("none");
   };
 
   const handleCategorySelect = (index: number) => {
     setActiveIndices(prev => prev.includes(index) ? prev.filter(x => x !== index) : [...prev, index]);
   };
+
+  const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
 
   const chip = (active: boolean) =>
     `px-3 py-1 text-xs font-semibold rounded-full transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-muted"}`;
@@ -333,48 +350,97 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
             mode={filterMode} year={year} month={month}
             onModeChange={onFilterModeChange} onChange={onDateChange}
             onMenu={onMenu} onSettings={onSettings}
+            extraAction={<PrivacyToggle privacyMode={privacyMode} onToggle={togglePrivacy} />}
           />
 
           {/* VISA / MC tabs */}
           <div className="px-5 pb-2">
-            <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5">
-              {(["VISA", "MASTERCARD"] as CardType[]).map(ct => (
-                <button
-                  key={ct}
-                  onClick={() => { setCardType(ct); setActiveIndices([]); }}
-                  className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${
-                    cardType === ct ? "bg-background shadow-sm text-foreground" : "text-muted-foreground/70 hover:text-foreground"
-                  }`}
-                >
-                  {ct}
-                </button>
-              ))}
+            <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5 gap-0.5">
+              <button
+                onClick={() => { setCardType("VISA"); setActiveIndices([]); }}
+                className={`py-2.5 rounded-full flex items-center justify-center flex-shrink-0 min-w-0 ${
+                  cardType === "VISA" ? "shadow-sm" : "opacity-40 hover:opacity-70"
+                }`}
+                style={{
+                  flexGrow: pillReady ? (cardType === "VISA" ? 62 : 38) : 50,
+                  transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)",
+                  background: cardType === "VISA" ? "linear-gradient(135deg, #1A1F71 0%, #1565C0 100%)" : "transparent",
+                }}
+              >
+                <svg viewBox="0 0 80 26" className="h-4 w-auto" fill="none">
+                  <path d="M31.7 0.8L20.6 25.2H13.4L7.9 6.3C7.6 5.2 7.3 4.8 6.4 4.3C4.9 3.5 2.4 2.7 0.2 2.2L0.4 0.8H12C13.6 0.8 15 1.9 15.4 3.7L18.3 18.6L25.4 0.8H31.7ZM57.1 17.1C57.1 11 48.9 10.7 49 8C49 7.2 49.8 6.3 51.5 6.1C52.3 6 54.7 5.9 57.4 7.2L58.5 1.9C57 1.3 55.1 0.7 52.7 0.7C46.8 0.7 42.6 3.8 42.6 8.4C42.5 11.8 45.6 13.7 47.9 14.8C50.3 16 51.1 16.7 51.1 17.8C51.1 19.4 49.2 20.1 47.4 20.1C44.4 20.1 42.7 19.3 41.3 18.6L40.2 24.1C41.7 24.8 44.5 25.4 47.4 25.4C53.7 25.4 57.8 22.3 57.8 17.4L57.1 17.1ZM73.5 25.2H79.1L74.2 0.8H69C67.6 0.8 66.4 1.6 65.9 2.9L57.1 25.2H63.4L64.7 21.6H72.4L73.5 25.2ZM66.4 16.5L69.5 7.8L71.3 16.5H66.4ZM40.2 0.8L35.1 25.2H29.1L34.2 0.8H40.2Z" fill={cardType === "VISA" ? "white" : "currentColor"} className={cardType === "VISA" ? "" : "text-foreground"} />
+                </svg>
+              </button>
+
+              <button
+                onClick={() => { setCardType("MASTERCARD"); setActiveIndices([]); }}
+                className={`py-2.5 rounded-full flex items-center justify-center flex-shrink-0 min-w-0 ${
+                  cardType === "MASTERCARD" ? "shadow-sm" : "opacity-40 hover:opacity-70"
+                }`}
+                style={{
+                  flexGrow: pillReady ? (cardType === "MASTERCARD" ? 62 : 38) : 50,
+                  transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)",
+                  background: cardType === "MASTERCARD" ? "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)" : "transparent",
+                }}
+              >
+                <svg viewBox="0 0 50 30" className="h-5 w-auto">
+                  <circle cx="18" cy="15" r="13" fill="#EB001B" />
+                  <circle cx="32" cy="15" r="13" fill="#F79E1B" />
+                  <path d="M25 4.8a13 13 0 0 1 0 20.4A13 13 0 0 1 25 4.8z" fill="#FF5F00" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          {/* Toggle buttons */}
-          <div className="px-5 pb-3 flex gap-2">
-            <button
-              onClick={() => setHeaderCollapsed(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                headerCollapsed ? "bg-secondary text-muted-foreground" : "bg-secondary text-foreground"
-              }`}
-            >
-              {headerCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-              Cabecera
-            </button>
-            <button
-              onClick={() => setChartCollapsed(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                chartCollapsed ? "bg-secondary text-muted-foreground" : "bg-secondary text-foreground"
-              }`}
-            >
-              {chartCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-              Gráfico
-            </button>
-          </div>
+          {/* Collapsed summary card — shown when both header and chart are hidden */}
+          {headerCollapsed && chartCollapsed && statement && (
+            <div className="mx-5 mb-3 rounded-2xl bg-secondary/60 border border-border/40 px-4 py-3 flex items-center justify-between gap-3">
+              <div className="flex gap-5 text-sm">
+                {totals.ars > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">ARS</p>
+                    <p className="font-bold text-sky-500 whitespace-nowrap">${mask(totals.ars.toLocaleString("es-AR", { minimumFractionDigits: 2 }))}</p>
+                  </div>
+                )}
+                {totals.usd > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">USD</p>
+                    <p className="font-bold text-emerald-500">${mask(totals.usd.toLocaleString("es-AR", { minimumFractionDigits: 2 }))}</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 flex-shrink-0">
+                <button onClick={() => setHeaderCollapsed(false)} className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDown size={12} /> Ver cabecera
+                </button>
+                <button onClick={() => setChartCollapsed(false)} className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDown size={12} /> Ver gráfico
+                </button>
+              </div>
+            </div>
+          )}
 
-          {/* Statement info card — collapsible */}
+          {/* Toggle buttons row — always visible when statement exists and not both collapsed */}
+          {(statement || loadingStatement) && !(headerCollapsed && chartCollapsed) && (
+            <div className="px-5 pb-1 flex justify-end gap-3">
+              <button
+                onClick={() => setHeaderCollapsed(v => !v)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {headerCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                {headerCollapsed ? "Ver cabecera" : "Ocultar cabecera"}
+              </button>
+              {chartCategories.length > 0 && (
+                <button
+                  onClick={() => setChartCollapsed(v => !v)}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {chartCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                  {chartCollapsed ? "Ver gráfico" : "Ocultar gráfico"}
+                </button>
+              )}
+            </div>
+          )}
           {!headerCollapsed && (
             <>
               {loadingStatement ? (
@@ -385,13 +451,13 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
                     {totals.ars > 0 && (
                       <div>
                         <p className="text-muted-foreground">Total ARS</p>
-                        <p className="font-bold text-sky-500 text-base">$ {totals.ars.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-bold text-sky-500 text-base">$ {mask(totals.ars.toLocaleString("es-AR", { minimumFractionDigits: 2 }))}</p>
                       </div>
                     )}
                     {totals.usd > 0 && (
                       <div>
                         <p className="text-muted-foreground">Total USD</p>
-                        <p className="font-bold text-emerald-500 text-base">USD {totals.usd.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-bold text-emerald-500 text-base">USD {mask(totals.usd.toLocaleString("es-AR", { minimumFractionDigits: 2 }))}</p>
                       </div>
                     )}
                   </div>
@@ -462,10 +528,11 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
             </>
           )}
 
-          {!chartCollapsed && chartCategories.length > 0 && (
+          {chartCategories.length > 0 && !chartCollapsed && (
             <CategoryBarChart
               categories={chartCategories}
               activeIndices={activeIndices}
+              privacyMode={privacyMode}
               onSelect={handleCategorySelect}
             />
           )}
@@ -475,7 +542,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
         <div className="flex-1 flex flex-col min-h-0 lg:h-full lg:bg-background">
 
           {/* Filter bar */}
-          <div className="flex-shrink-0 px-4 py-2 space-y-2">
+          <div className="flex-shrink-0 px-4 py-2 relative z-20">
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Cardholder */}
               <div className="flex gap-1">
@@ -504,55 +571,79 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
               </button>
             </div>
 
-            {/* Expanded filter panel */}
+            {/* Expanded filter panel — absolute overlay, doesn't push list down */}
             {filterOpen && (
-              <div className="rounded-2xl bg-secondary border border-border/60 p-3 space-y-2.5">
-                {/* Search */}
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="uber, cabify, netflix..."
-                    className="w-full h-9 pl-9 pr-3 rounded-xl bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-                  />
+              <div className="absolute left-4 right-4 top-full z-30 shadow-xl rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
+                {/* Search — always visible */}
+                <div className="p-3">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="uber, cabify, netflix..."
+                      className="w-full h-9 pl-9 pr-3 rounded-xl bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+                    />
+                  </div>
                 </div>
                 {/* Date range */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block">Desde</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={e => setDateFrom(e.target.value)}
-                      className="w-full h-9 px-0 rounded-xl bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block">Hasta</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={e => setDateTo(e.target.value)}
-                      className="w-full h-9 px-0 rounded-xl bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
+                <div className="px-3 py-2">
+                  <button onClick={() => toggleSection("dates")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Fechas {(dateFrom || dateTo) && <span className="text-primary">•</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("dates", !!(dateFrom || dateTo)) ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("dates", !!(dateFrom || dateTo)) && (
+                    <div className="grid grid-cols-2 gap-4 pb-1">
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block">Desde</label>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full h-9 px-0 rounded-xl bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block">Hasta</label>
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full h-9 px-0 rounded-xl bg-background text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {/* Installment mode */}
-                <div>
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Tipo de consumo</label>
-                  <div className="flex gap-1">
-                    {([["todos", "Todos"], ["cuotas", "Solo cuotas"], ["unicos", "Solo únicos"], ["liberar", "Cuotas a liberar"]] as [InstallmentMode, string][]).map(([mode, label]) => (
-                      <button key={mode} onClick={() => setInstallmentMode(mode)} className={chip(installmentMode === mode)}>{label}</button>
-                    ))}
-                  </div>
+                <div className="px-3 py-2">
+                  <button onClick={() => toggleSection("installment")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Tipo de consumo {installmentMode !== "todos" && <span className="text-primary">•</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("installment", installmentMode !== "todos") ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("installment", installmentMode !== "todos") && (
+                    <div className="flex flex-wrap gap-1 pb-1">
+                      {([["todos", "Todos"], ["cuotas", "Solo cuotas"], ["unicos", "Solo únicos"], ["liberar", "Cuotas a liberar"]] as [InstallmentMode, string][]).map(([mode, label]) => (
+                        <button key={mode} onClick={() => setInstallmentMode(mode)} className={chip(installmentMode === mode)}>{label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Sort order */}
+                <div className="px-3 py-2">
+                  <button onClick={() => toggleSection("sort")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Ordenar {sortOrder !== "none" && <span className="text-primary">•</span>}</span>
+                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("sort", sortOrder !== "none") ? "" : "rotate-180"}`} />
+                  </button>
+                  {!isSectionCollapsed("sort", sortOrder !== "none") && (
+                    <div className="flex flex-wrap gap-1 pb-1">
+                      {(["none", "desc", "asc", "date_desc", "date_asc"] as const).map((opt) => {
+                        const labels: Record<typeof opt, string> = { none: "Predeterminado", desc: "Mayor importe", asc: "Menor importe", date_desc: "Fecha ↓", date_asc: "Fecha ↑" };
+                        return (
+                          <button key={opt} onClick={() => setSortOrder(opt)} className={chip(sortOrder === opt)}>{labels[opt]}</button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 {/* Clear */}
                 {hasActiveFilters && (
-                  <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                    <X size={12} /> Limpiar filtros
-                  </button>
+                  <div className="px-3 py-2">
+                    <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      <X size={12} /> Limpiar filtros
+                    </button>
+                  </div>
                 )}
               </div>
             )}

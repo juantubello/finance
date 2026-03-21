@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown, Menu, Settings } from "lucide-react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, ChevronDown, Menu, Settings, TriangleAlert, Check } from "lucide-react";
+
+const today = new Date();
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -16,9 +18,10 @@ interface Props {
   onChange: (year: number, month: number) => void;
   onMenu?: () => void;
   onSettings?: () => void;
+  extraAction?: ReactNode;
 }
 
-export default function DateFilter({ mode, year, month, onModeChange, onChange, onMenu, onSettings }: Props) {
+export default function DateFilter({ mode, year, month, onModeChange, onChange, onMenu, onSettings, extraAction }: Props) {
   const [openPicker, setOpenPicker] = useState<"month" | "year" | null>(null);
   const [pickerYear, setPickerYear] = useState(year);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,7 +33,9 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange, 
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpenPicker(null);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpenPicker(null);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -80,8 +85,13 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange, 
     setOpenPicker(openPicker === "month" ? null : "month");
   };
 
+  const isCurrentPeriod = mode === "month"
+    ? year === today.getFullYear() && month === today.getMonth() + 1
+    : year === today.getFullYear();
+
   return (
-    <div className="flex items-center gap-2 pt-5 pb-3 px-3" ref={ref}>
+    <div ref={ref}>
+    <div className="flex items-center gap-2 pt-5 pb-3 px-3">
       {onMenu && (
         <button
           onClick={onMenu}
@@ -94,7 +104,6 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange, 
 
       {/* ── Year pill ── */}
       <div className="relative flex items-center gap-0.5">
-        {/* These arrows only navigate the picker year, they don't change data */}
         <button
           onClick={pickerPrevYear}
           className="p-1 rounded-full hover:bg-secondary transition-colors"
@@ -169,12 +178,18 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange, 
 
         <button
           onClick={() => { onModeChange("month"); toggleMonthPicker(); }}
-          className={`flex items-center gap-0.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-            mode === "month"
-              ? "bg-foreground text-background"
-              : "bg-secondary text-muted-foreground"
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
+            !isCurrentPeriod
+              ? "bg-amber-400 text-amber-900"
+              : mode === "month"
+                ? "bg-foreground text-background"
+                : "bg-secondary text-muted-foreground"
           }`}
         >
+          {!isCurrentPeriod
+            ? <TriangleAlert size={11} />
+            : <Check size={11} className="opacity-40" />
+          }
           {MONTH_NAMES[month - 1].slice(0, 3)}
           <ChevronDown size={11} />
         </button>
@@ -222,18 +237,31 @@ export default function DateFilter({ mode, year, month, onModeChange, onChange, 
                 );
               })}
             </div>
+            {!isCurrentPeriod && (
+              <div className="mt-2 pt-2 border-t border-border flex items-center gap-1.5">
+                <TriangleAlert size={11} className="text-amber-500 flex-shrink-0" />
+                <p className="text-[11px] text-amber-600 font-medium">
+                  Estás en {MONTH_NAMES[month - 1]} {year}, no en el período actual
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
-      {onSettings && (
-        <button
-          onClick={onSettings}
-          className="p-2 rounded-full hover:bg-secondary transition-colors flex-shrink-0 ml-auto"
-          aria-label="Configuración"
-        >
-          <Settings size={20} className="text-foreground" />
-        </button>
-      )}
+
+      <div className="flex items-center flex-1 ml-3">
+        {extraAction}
+        {onSettings && (
+          <button
+            onClick={onSettings}
+            className="p-2 ml-auto mr-1 rounded-full hover:bg-secondary transition-colors"
+            aria-label="Configuración"
+          >
+            <Settings size={20} className="text-foreground" />
+          </button>
+        )}
+      </div>
+    </div>
     </div>
   );
 }

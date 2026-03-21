@@ -1,13 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { Search } from "lucide-react";
+import { usePrivacyMode } from "@/hooks/usePrivacyMode";
+import PrivacyToggle from "@/components/PrivacyToggle";
 import { useNavigate } from "react-router-dom";
 import { useIngresos, useIngresosForYear, useIncomeCategories, useAvailable, useGastos, useGastosForYear, useDolarBlue, useUSDCARS } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
-import CategoryBarChart from "@/components/CategoryBarChart";
 import SkeletonList from "@/components/SkeletonList";
 import type { IngresoResponse } from "@/types/api";
-import type { GastosByCategoryResponse } from "@/types/api";
 
 interface Props {
   onEditIngreso: (i: IngresoResponse) => void;
@@ -22,14 +22,18 @@ interface Props {
 
 export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
   const navigate = useNavigate();
+  const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
   const [search, setSearch] = useState("");
-  const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [conversionMode, setConversionMode] = useState<"blue" | "usdc">("blue");
 
   const monthQuery = useIngresos(filterMode === "month" ? year : 0, filterMode === "month" ? month : 0);
   const yearQuery = useIngresosForYear(filterMode === "year" ? year : 0);
+
+  // Sparkline — always fetch regardless of filter mode (react-query deduplicates)
+  const sparkCurYear = useIngresosForYear(year);
+  const sparkPrevYear = useIngresosForYear(month <= 6 ? year - 1 : 0);
   const ingresos = (filterMode === "year" ? yearQuery.data : monthQuery.data) ?? [];
   const isLoading = filterMode === "year" ? yearQuery.isLoading : monthQuery.isLoading;
   const error = filterMode === "month" ? monthQuery.error : null;
@@ -54,59 +58,29 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
     return map;
   }, [incomeCategories]);
 
-  // Group ingresos by category+currency → chart data
-  // amount = original currency (for label display), arsAmount = ARS equivalent (for bar height)
-  const { chartCategories, chartHeightAmounts } = useMemo(() => {
-    const map = new Map<string, GastosByCategoryResponse & { _arsAmount: number }>();
-    for (const i of ingresos) {
-      const isUSD = i.currencySymbol === "USD" || i.currencySymbol === "U$S";
-      const arsAmount = isUSD && conversionRate ? i.amount * conversionRate : i.amount;
-      const key = `${i.categoryId ?? "null"}-${i.currencyId}`;
-      const catLabel = (i.category || "Sin categoría") + (isUSD ? " (USD)" : " (ARS)");
-      if (!map.has(key)) {
-        map.set(key, {
-          categoryId: i.categoryId ?? -1,
-          categoryName: catLabel,
-          categoryDescription: null,
-          categoryIcon: i.categoryIcon,
-          categoryColor: i.categoryColor ?? (i.categoryId != null ? categoryColorMap.get(i.categoryId) ?? null : null),
-          amount: 0,
-          currencyId: i.currencyId,
-          currency: i.currency,
-          currencySymbol: i.currencySymbol,
-          _arsAmount: 0,
-        });
-      }
-      const entry = map.get(key)!;
-      entry.amount += i.amount;       // original currency total (for label)
-      entry._arsAmount += arsAmount;  // ARS equivalent (for bar height)
-    }
-    const sorted = Array.from(map.values()).sort((a, b) => b._arsAmount - a._arsAmount);
-    return {
-      chartCategories: sorted,
-      chartHeightAmounts: sorted.map(c => c._arsAmount),
-    };
-  }, [ingresos, categoryColorMap, conversionRate]);
+  // Sparkline: last 6 months of income totals in ARS
+  const sparkData = useMemo(() => {
+    const allData = [...(sparkPrevYear.data ?? []), ...(sparkCurYear.data ?? [])];
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(year, month - 1 - (5 - i));
+      const y = d.getFullYear(), m = d.getMonth() + 1;
+      const entries = allData.filter(ing => {
+        const dt = new Date(ing.dateTime);
+        return dt.getFullYear() === y && dt.getMonth() + 1 === m;
+      });
+      const total = entries.reduce((s, ing) => {
+        const isUSD = ing.currencySymbol === "USD" || ing.currencySymbol === "U$S";
+        return s + (isUSD && conversionRate ? ing.amount * conversionRate : ing.amount);
+      }, 0);
+      return { year: y, month: m, total };
+    });
+  }, [sparkCurYear.data, sparkPrevYear.data, year, month, conversionRate]);
 
-  // Filter by selected chart category indices
   const filtered = useMemo(() => {
-    let result = ingresos;
-    if (activeIndices.length > 0) {
-      // Match by categoryId+currencyId since chart is grouped that way
-      const selectedKeys = new Set(
-        activeIndices.map(i => {
-          const cat = chartCategories[i];
-          return cat ? `${cat.categoryId}-${cat.currencyId}` : null;
-        }).filter(Boolean)
-      );
-      result = result.filter(i => selectedKeys.has(`${i.categoryId ?? -1}-${i.currencyId}`));
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(i => i.description.toLowerCase().includes(q));
-    }
-    return result;
-  }, [ingresos, search, activeIndices, chartCategories]);
+    if (!search.trim()) return ingresos;
+    const q = search.toLowerCase();
+    return ingresos.filter(i => i.description.toLowerCase().includes(q));
+  }, [ingresos, search]);
 
   // Total in ARS (USD amounts converted using selected rate)
   const total = useMemo(() => {
@@ -119,12 +93,12 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
     return { total: arsSum };
   }, [ingresos, conversionRate]);
 
+  const totalUSDIncome = useMemo(() =>
+    ingresos.filter(i => i.currencySymbol === "USD" || i.currencySymbol === "U$S")
+            .reduce((s, i) => s + i.amount, 0),
+    [ingresos]
+  );
 
-  const handleCategorySelect = (i: number) => {
-    setActiveIndices(prev =>
-      prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
-    );
-  };
 
   return (
     <div className="flex flex-col h-[100dvh] max-w-lg mx-auto lg:max-w-3xl animate-page-from-right">
@@ -137,6 +111,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
           onChange={onDateChange}
           onMenu={onMenu}
           onSettings={onSettings}
+          extraAction={<PrivacyToggle privacyMode={privacyMode} onToggle={togglePrivacy} />}
         />
       </div>
 
@@ -153,7 +128,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
             <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
             <div className="flex items-baseline gap-2 justify-center mb-2">
               <span className={`text-4xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
-                {(available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+                ${mask((available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 }))}
               </span>
               <span className="text-sm font-semibold text-muted-foreground">{available?.moneda ?? "ARS"}</span>
             </div>
@@ -170,7 +145,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
                 style={{ flexGrow: pillReady ? 62 : 50, transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)" }}
                 className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 bg-emerald-500 text-white shadow-sm"
               >
-                {total ? `$${total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS` : "+ Ingresos"}
+                {total ? `$${mask(total.total.toLocaleString("es-AR", { minimumFractionDigits: 0 }))} ARS` : "+ Ingresos"}
               </button>
             </div>
 
@@ -198,26 +173,45 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    USDC · ARQ ${usdcARS.compra.toLocaleString("es-AR")}
+                    USDC · ARQ ${usdcARS.compra.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                   </button>
                 )}
               </div>
             )}
+            {dolarBlue && usdcARS && (() => {
+              const diff = usdcARS.compra - dolarBlue.compra;
+              if (diff <= 0) return null;
+              const totalGain = totalUSDIncome * diff;
+              return (
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap justify-center">
+                  <span className="text-[11px] text-teal-500 font-semibold">
+                    +${diff.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS/USD usando USDC vs Blue
+                  </span>
+                  {totalUSDIncome > 0 && (
+                    <>
+                      <span className="text-[11px] text-muted-foreground/50">·</span>
+                      <span className="text-[11px] text-teal-500 font-bold">
+                        +${mask(totalGain.toLocaleString("es-AR", { maximumFractionDigits: 0 }))} ARS en tus ingresos
+                      </span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </>
         )}
       </div>
 
-      {/* Bar chart */}
-      {chartCategories.length > 0 && (
-        <div className="flex-shrink-0">
-          <CategoryBarChart
-            categories={chartCategories}
-            activeIndices={activeIndices}
-            onSelect={handleCategorySelect}
-            heightAmounts={chartHeightAmounts}
-          />
-        </div>
-      )}
+      {/* Sparkline */}
+      <div className="flex-shrink-0 px-5 pb-2">
+        <IncomeSparkline
+          data={sparkData}
+          currentMonth={month}
+          currentYear={year}
+          privacyMode={privacyMode}
+          mask={mask}
+        />
+      </div>
 
       {/* Search */}
       <div className="px-5 py-2 flex-shrink-0">
@@ -250,6 +244,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
                 categoryColor={i.categoryColor ?? (i.categoryId != null ? categoryColorMap.get(i.categoryId) ?? null : null)}
                 onClick={() => onEditIngreso(i)}
                 conversionRate={conversionRate}
+                privacyMode={privacyMode}
               />
             ))}
             {filtered.length === 0 && (
@@ -265,11 +260,105 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
   );
 }
 
-function IngresoRow({ ingreso, categoryColor, onClick, conversionRate }: {
+const MONTH_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function IncomeSparkline({ data, currentMonth, currentYear, privacyMode, mask }: {
+  data: { year: number; month: number; total: number }[];
+  currentMonth: number;
+  currentYear: number;
+  privacyMode: boolean;
+  mask: (v: string) => string;
+}) {
+  if (!data.length || data.every(d => d.total === 0)) return null;
+
+  const W = 320, H = 100, PAD_X = 16, PAD_TOP = 24, PAD_BOTTOM = 20;
+  const chartH = H - PAD_TOP - PAD_BOTTOM;
+  const max = Math.max(...data.map(d => d.total), 1);
+  const n = data.length;
+  const step = (W - PAD_X * 2) / (n - 1);
+
+  const pts = data.map((d, i) => ({
+    x: PAD_X + i * step,
+    y: PAD_TOP + chartH * (1 - d.total / max),
+    ...d,
+  }));
+
+  // Smooth bezier path
+  const linePath = pts.reduce((path, p, i) => {
+    if (i === 0) return `M ${p.x},${p.y}`;
+    const prev = pts[i - 1];
+    const cpx = (prev.x + p.x) / 2;
+    return `${path} C ${cpx},${prev.y} ${cpx},${p.y} ${p.x},${p.y}`;
+  }, "");
+
+  const areaPath = `${linePath} L ${pts[n - 1].x},${H - PAD_BOTTOM} L ${pts[0].x},${H - PAD_BOTTOM} Z`;
+
+  // % change vs previous month
+  const cur = data[n - 1].total;
+  const prev = data[n - 2]?.total ?? 0;
+  const pct = prev > 0 ? ((cur - prev) / prev) * 100 : null;
+
+  return (
+    <div className="rounded-2xl bg-secondary/40 border border-border/40 p-3">
+      <div className="flex items-center justify-between mb-1 px-1">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Últimos 6 meses</span>
+        {pct !== null && (
+          <span className={`text-[11px] font-bold ${pct >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+            {pct >= 0 ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}% vs mes ant.
+          </span>
+        )}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
+        <defs>
+          <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        <path d={areaPath} fill="url(#incomeGrad)" />
+        <path d={linePath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+        {pts.map((p, i) => {
+          const isCurrent = p.year === currentYear && p.month === currentMonth;
+          const showYear = i === 0 || pts[i - 1].year !== p.year;
+          return (
+            <g key={i}>
+              {isCurrent && <circle cx={p.x} cy={p.y} r={10} fill="#10b981" opacity={0.12} />}
+              <circle cx={p.x} cy={p.y} r={isCurrent ? 4.5 : 2.5} fill="#10b981" opacity={isCurrent ? 1 : 0.55} />
+
+              {/* Amount above current point */}
+              {isCurrent && (
+                <text x={p.x} y={p.y - 12} textAnchor="middle" fontSize={9} fill="#10b981" fontWeight="bold">
+                  {privacyMode ? "***" : `$${p.total >= 1_000_000 ? `${(p.total / 1_000_000).toFixed(1)}M` : p.total >= 1000 ? `${Math.round(p.total / 1000)}K` : Math.round(p.total)}`}
+                </text>
+              )}
+
+              {/* Month label */}
+              <text
+                x={p.x}
+                y={H - 4}
+                textAnchor="middle"
+                fontSize={9}
+                fill={isCurrent ? "#10b981" : "#9ca3af"}
+                fontWeight={isCurrent ? "bold" : "normal"}
+              >
+                {showYear && p.year !== currentYear ? `${MONTH_SHORT[p.month - 1]} '${String(p.year).slice(2)}` : MONTH_SHORT[p.month - 1]}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function IngresoRow({ ingreso, categoryColor, onClick, conversionRate, privacyMode }: {
   ingreso: IngresoResponse;
   categoryColor: string | null;
   onClick: () => void;
   conversionRate?: number;
+  privacyMode?: boolean;
 }) {
   const isUSD = ingreso.currencySymbol === "USD" || ingreso.currencySymbol === "U$S";
   const arsValue = isUSD && conversionRate ? ingreso.amount * conversionRate : undefined;
@@ -303,11 +392,11 @@ function IngresoRow({ ingreso, categoryColor, onClick, conversionRate }: {
       </div>
       <div className="flex flex-col items-end flex-shrink-0 ml-3">
         <div className="text-sm font-semibold tabular text-emerald-500">
-          + {ingreso.currencySymbol} {ingreso.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+          {privacyMode ? "***" : `+ ${ingreso.currencySymbol} ${ingreso.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
         </div>
         {arsValue !== undefined && (
           <div className="text-[10px] text-muted-foreground tabular">
-            ≈ ${arsValue.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
+            {privacyMode ? "—" : `≈ $${arsValue.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS`}
           </div>
         )}
       </div>

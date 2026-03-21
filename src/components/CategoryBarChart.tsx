@@ -39,11 +39,12 @@ interface Props {
   onSelect: (index: number) => void;
   // Optional ARS-equivalent amounts for bar height/percentage when amounts are in mixed currencies
   heightAmounts?: number[];
+  privacyMode?: boolean;
 }
 
 const BAR_MAX_H = 175;
 
-export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts }: Props) {
+export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts, privacyMode }: Props) {
   const isDark = useIsDark();
   const colors = isDark ? BAR_COLORS_DARK : BAR_COLORS_LIGHT;
 
@@ -92,9 +93,9 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
               {cat.categoryName}
             </span>
             <span className="text-[11px] font-bold text-foreground tabular">
-              {showSymbol ? `${cat.currencySymbol} ` : ""}{formatAmount(cat.amount)}
+              {privacyMode ? "***" : `${showSymbol ? `${cat.currencySymbol} ` : ""}${formatAmount(cat.amount)}`}
             </span>
-            <span className="text-[10px] text-muted-foreground tabular">{pct}%</span>
+            <span className="text-[10px] text-muted-foreground tabular">{privacyMode ? "—" : `${pct}%`}</span>
           </button>
         );
       })}

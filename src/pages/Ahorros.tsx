@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, PiggyBank } from "lucide-react";
+import { TrendingUp, TrendingDown, PiggyBank, Search } from "lucide-react";
+import { usePrivacyMode } from "@/hooks/usePrivacyMode";
+import PrivacyToggle from "@/components/PrivacyToggle";
 import { useSavingBalance, useSavings, useCryptoPrices, tickerToCoingeckoId, useDolarBlue, useUSDCARS, useCedearSPY } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
 import SkeletonList from "@/components/SkeletonList";
@@ -58,12 +60,12 @@ interface AssetWithUSD extends SavingBalance {
 
 const BAR_MAX_H = 210;
 
-function BalanceBarChart({ assets, colors }: { assets: AssetWithUSD[]; colors: string[] }) {
+function BalanceBarChart({ assets, colors, privacyMode }: { assets: AssetWithUSD[]; colors: string[]; privacyMode?: boolean }) {
   const values = assets.map(a => a.usdValue ?? a.balance);
   const max = Math.max(...values, 0.000001);
 
   return (
-    <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1 justify-center">
+    <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
       {assets.map((a, i) => {
         const val = a.usdValue ?? a.balance;
         const barH = Math.max(24, Math.round((val / max) * BAR_MAX_H));
@@ -85,14 +87,14 @@ function BalanceBarChart({ assets, colors }: { assets: AssetWithUSD[]; colors: s
               {a.ticker}
             </span>
             <span className="text-[11px] font-bold text-foreground tabular">
-              {a.balance.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: a.decimales })}
+              {privacyMode ? "***" : a.balance.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: a.decimales })}
             </span>
             {a.arsValue !== undefined ? (
               <span className="text-[10px] text-muted-foreground tabular">
-                ${a.arsValue.toLocaleString("es-AR", { minimumFractionDigits: 0 })}
+                {privacyMode ? "—" : `$${a.arsValue.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`}
               </span>
             ) : a.usdValue !== undefined ? (
-              <span className="text-[10px] text-muted-foreground tabular">{formatUSD(a.usdValue)}</span>
+              <span className="text-[10px] text-muted-foreground tabular">{privacyMode ? "—" : formatUSD(a.usdValue)}</span>
             ) : null}
           </div>
         );
@@ -146,6 +148,17 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
   });
 
   const totalUSD = assetsWithUSD.reduce((sum, a) => sum + (a.usdValue ?? 0), 0);
+  const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
+  const [search, setSearch] = useState("");
+
+  const filteredMovements = useMemo(() => {
+    if (!search.trim()) return movements;
+    const q = search.toLowerCase();
+    return movements.filter(m =>
+      (m.description?.toLowerCase().includes(q)) ||
+      m.ticker.toLowerCase().includes(q)
+    );
+  }, [movements, search]);
 
   return (
     <div className="flex flex-col h-[100dvh] max-w-lg mx-auto lg:max-w-3xl">
@@ -158,16 +171,18 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
           onChange={(y, m) => { setYear(y); setMonth(m); }}
           onMenu={onMenu}
           onSettings={onSettings}
+          extraAction={<PrivacyToggle privacyMode={privacyMode} onToggle={togglePrivacy} />}
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain">
+      {/* Fixed header: total + rates + chart + search */}
+      <div className="flex-shrink-0">
         {/* Total estimado */}
         {!loadingBalance && totalUSD > 0 && (
-          <div className="pt-8 pb-2 text-center">
+          <div className="pt-3 pb-1 text-center">
             <p className="text-xs text-muted-foreground mb-1">Total estimado</p>
             <div className="flex items-baseline gap-2 justify-center">
-              <span className="text-4xl font-bold tracking-tighter tabular text-foreground">{formatUSD(totalUSD)}</span>
+              <span className="text-4xl font-bold tracking-tighter tabular text-foreground">{mask(`$${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}</span>
               <span className="text-sm font-semibold text-muted-foreground">USD</span>
             </div>
           </div>
@@ -175,21 +190,21 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
 
         {/* Exchange rate pills */}
         {(dolarBlue || usdcARS || spyCedear) && (
-          <div className="flex gap-1.5 px-5 pt-2 pb-1 flex-wrap">
+          <div className="flex gap-1.5 px-5 pt-1 pb-1 flex-wrap">
             {dolarBlue && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-secondary text-[10px] font-medium">
                 <span className="font-bold text-foreground">🔵 Blue</span>
-                <span className="text-emerald-500 font-semibold">C ${dolarBlue.compra.toLocaleString("es-AR")}</span>
+                <span className="text-emerald-500 font-semibold">C ${dolarBlue.venta.toLocaleString("es-AR")}</span>
                 <span className="text-muted-foreground/50">·</span>
-                <span className="text-red-500 font-semibold">V ${dolarBlue.venta.toLocaleString("es-AR")}</span>
+                <span className="text-red-500 font-semibold">V ${dolarBlue.compra.toLocaleString("es-AR")}</span>
               </div>
             )}
             {usdcARS && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-secondary text-[10px] font-medium">
                 <span className="font-bold text-foreground">💵 USDC · ARQ</span>
-                <span className="text-emerald-500 font-semibold">C ${usdcARS.compra.toLocaleString("es-AR")}</span>
+                <span className="text-emerald-500 font-semibold">C ${usdcARS.venta.toLocaleString("es-AR", { maximumFractionDigits: 0 })}</span>
                 <span className="text-muted-foreground/50">·</span>
-                <span className="text-red-500 font-semibold">V ${usdcARS.venta.toLocaleString("es-AR")}</span>
+                <span className="text-red-500 font-semibold">V ${usdcARS.compra.toLocaleString("es-AR", { maximumFractionDigits: 0 })}</span>
               </div>
             )}
             {spyCedear && (
@@ -204,36 +219,50 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
           </div>
         )}
 
-        {/* Balance section */}
+        {/* Balance bar chart */}
         {loadingBalance ? (
-          <div className="px-5 flex gap-3">
+          <div className="px-5 flex gap-3 mt-1">
             {[1, 2, 3].map(i => (
               <div key={i} className="flex-1 h-20 rounded-2xl bg-secondary animate-pulse" />
             ))}
           </div>
         ) : balances.length === 0 ? (
-          <div className="flex flex-col items-center py-8 gap-2">
+          <div className="flex flex-col items-center py-6 gap-2">
             <PiggyBank size={40} className="text-muted-foreground/30" />
             <p className="text-sm text-muted-foreground">Sin saldo registrado</p>
           </div>
         ) : (
-          <BalanceBarChart assets={assetsWithUSD} colors={colors} />
+          <BalanceBarChart assets={assetsWithUSD} colors={colors} privacyMode={privacyMode} />
         )}
 
-        {/* Movements list */}
-        <div className="px-5 pb-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Movimientos</p>
+        {/* Search */}
+        <div className="px-5 py-2">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar movimientos..."
+              className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
+            />
+          </div>
         </div>
+      </div>
+
+      {/* Scrollable movements list */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        {/* Movements list */}
         {loadingMovements ? (
           <SkeletonList />
-        ) : movements.length === 0 ? (
+        ) : filteredMovements.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-8">
-            No hay movimientos. Tocá '+' para agregar.
+            {movements.length === 0 ? "No hay movimientos. Tocá '+' para agregar." : "Sin resultados."}
           </p>
         ) : (
           <div className="animate-fade-in">
-            {movements.map(m => (
-              <MovimientoRow key={m.id} movimiento={m} onClick={() => onEditMovimiento(m)} cryptoPrices={cryptoPrices} spyCedear={spyCedear} />
+            {filteredMovements.map(m => (
+              <MovimientoRow key={m.id} movimiento={m} onClick={() => onEditMovimiento(m)} cryptoPrices={cryptoPrices} spyCedear={spyCedear} privacyMode={privacyMode} />
             ))}
           </div>
         )}
@@ -243,11 +272,12 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
   );
 }
 
-function MovimientoRow({ movimiento: m, onClick, cryptoPrices, spyCedear }: {
+function MovimientoRow({ movimiento: m, onClick, cryptoPrices, spyCedear, privacyMode }: {
   movimiento: SavingMovement;
   onClick: () => void;
   cryptoPrices?: Record<string, { usd: number }>;
   spyCedear?: { lastPrice: number } | null;
+  privacyMode?: boolean;
 }) {
   const isDeposit = m.cantidad >= 0;
 
@@ -289,10 +319,10 @@ function MovimientoRow({ movimiento: m, onClick, cryptoPrices, spyCedear }: {
       </div>
       <div className="flex flex-col items-end flex-shrink-0 ml-3">
         <div className={`text-sm font-semibold tabular ${isDeposit ? "text-emerald-500" : "text-red-500"}`}>
-          {isDeposit ? "+" : ""}{m.cantidad.toLocaleString("es-AR", { minimumFractionDigits: m.decimales, maximumFractionDigits: m.decimales })} {m.ticker}
+          {privacyMode ? "***" : `${isDeposit ? "+" : ""}${m.cantidad.toLocaleString("es-AR", { minimumFractionDigits: m.decimales, maximumFractionDigits: m.decimales })} ${m.ticker}`}
         </div>
         {approxLabel && (
-          <div className="text-[10px] text-muted-foreground tabular">{approxLabel}</div>
+          <div className="text-[10px] text-muted-foreground tabular">{privacyMode ? "—" : approxLabel}</div>
         )}
       </div>
     </button>
