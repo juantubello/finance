@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   X, ChevronLeft, ChevronRight, CreditCard, Tag, Zap, Image,
-  Plus, Pencil, Trash2, Check, Loader2, ArrowRight,
+  Plus, Pencil, Trash2, Check, Loader2, ArrowRight, Info,
 } from "lucide-react";
 import {
   useCards, useCreateCard, useUpdateCard, useDeleteCard,
@@ -328,9 +328,22 @@ function CategoryRulesView({ onBack }: { onBack: () => void }) {
 function InlineCatRuleForm({ form, categories, onChange, onSave, onCancel, error, isSaving, title }: {
   form: CatRuleFormState; categories: { id: number; name: string }[]; onChange: (f: CatRuleFormState) => void; onSave: () => void; onCancel: () => void; error: string | null; isSaving: boolean; title: string;
 }) {
+  const [showInfo, setShowInfo] = useState(false);
   return (
     <div className="bg-background border border-border/60 rounded-2xl p-4 mb-1">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{title}</div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">{title}</span>
+        <button type="button" onClick={() => setShowInfo(v => !v)} className={`p-1 rounded-full transition-colors ${showInfo ? "bg-primary/15 text-primary" : "hover:bg-secondary text-muted-foreground"}`}>
+          <Info size={13} />
+        </button>
+      </div>
+      {showInfo && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/60 border border-border/40 space-y-1.5">
+          <p className="text-[11px] font-semibold text-foreground">¿Cómo funcionan las reglas?</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">Cada gasto se analiza buscando el <span className="font-medium text-foreground">keyword</span> dentro de la descripción (sin importar mayúsculas). Si coincide, se asigna la categoría automáticamente.</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">Si un gasto coincide con <span className="font-medium text-foreground">varias reglas</span>, gana la de <span className="font-medium text-foreground">prioridad más alta</span>. Usá números más altos para keywords más específicos.</p>
+        </div>
+      )}
       <div className="flex gap-2 mb-2">
         <input type="text" value={form.keyword} onChange={e => onChange({ ...form, keyword: e.target.value.toLowerCase() })} placeholder="Keyword (ej: netflix)" className="flex-1 h-10 px-3 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30" />
         <input type="number" value={form.priority} onChange={e => onChange({ ...form, priority: Math.max(1, parseInt(e.target.value) || 1) })} min={1} placeholder="P" title="Prioridad" className="w-14 h-10 px-2 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center" />
@@ -416,9 +429,22 @@ function LogoRulesView({ onBack }: { onBack: () => void }) {
 function InlineLogoRuleForm({ form, onChange, onSave, onCancel, error, isSaving, title }: {
   form: LogoRuleFormState; onChange: (f: LogoRuleFormState) => void; onSave: () => void; onCancel: () => void; error: string | null; isSaving: boolean; title: string;
 }) {
+  const [showInfo, setShowInfo] = useState(false);
   return (
     <div className="bg-background border border-border/60 rounded-2xl p-4 mb-1">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{title}</div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">{title}</span>
+        <button type="button" onClick={() => setShowInfo(v => !v)} className={`p-1 rounded-full transition-colors ${showInfo ? "bg-primary/15 text-primary" : "hover:bg-secondary text-muted-foreground"}`}>
+          <Info size={13} />
+        </button>
+      </div>
+      {showInfo && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/60 border border-border/40 space-y-1.5">
+          <p className="text-[11px] font-semibold text-foreground">¿Cómo funcionan las reglas de logos?</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">Al mostrar cada gasto, se busca el <span className="font-medium text-foreground">keyword</span> en la descripción. Si coincide, se muestra el logo en lugar del ícono genérico.</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">Si un gasto coincide con <span className="font-medium text-foreground">varias reglas</span>, gana la de <span className="font-medium text-foreground">prioridad más alta</span>. Usá números más altos para keywords más específicos.</p>
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-2">
         <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden">
           {form.logoUrl ? <img src={form.logoUrl} alt="" className="w-full h-full object-contain" /> : <span className="text-xs text-muted-foreground">logo</span>}
@@ -527,9 +553,18 @@ export default function CardConfigSheet({ open, onClose }: Props) {
     <div className="fixed inset-0 z-[70] flex items-end justify-center">
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={handleClose} />
       <div className="relative w-full max-w-lg bg-card rounded-t-3xl shadow-card animate-slide-up p-6 pb-10 max-h-[94vh] flex flex-col">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-foreground">{headings[view]}</h2>
-          <button onClick={handleClose} className="p-2 rounded-full hover:bg-secondary transition-colors">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            {view !== "main" && (
+              <p className="text-[10px] text-muted-foreground mb-0.5 flex items-center gap-1">
+                <span>{headings.main}</span>
+                <ChevronRight size={10} />
+                <span className="text-foreground font-medium">{headings[view]}</span>
+              </p>
+            )}
+            <h2 className="text-lg font-bold text-foreground">{headings[view]}</h2>
+          </div>
+          <button onClick={handleClose} className="p-2 rounded-full hover:bg-secondary transition-colors flex-shrink-0">
             <X size={20} className="text-muted-foreground" />
           </button>
         </div>

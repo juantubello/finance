@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight, Info } from "lucide-react";
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useLogoRules, useCreateLogoRule, useUpdateLogoRule, useDeleteLogoRule } from "@/hooks/useApi";
@@ -139,9 +139,36 @@ interface FormProps {
 }
 
 function RuleForm({ form, onChange, onSave, onCancel, error, isSaving, title }: FormProps) {
+  const [showInfo, setShowInfo] = useState(false);
+
   return (
     <div className="bg-card border border-border/60 rounded-2xl p-4 mb-3 shadow-subtle">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{title}</div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">{title}</span>
+        <button
+          type="button"
+          onClick={() => setShowInfo(v => !v)}
+          className={`p-1 rounded-full transition-colors ${showInfo ? "bg-primary/15 text-primary" : "hover:bg-secondary text-muted-foreground"}`}
+          aria-label="¿Cómo funcionan las reglas?"
+        >
+          <Info size={13} />
+        </button>
+      </div>
+
+      {showInfo && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/60 border border-border/40 space-y-1.5">
+          <p className="text-[11px] font-semibold text-foreground">¿Cómo funcionan las reglas de logos?</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Cuando se muestran los gastos, se busca el <span className="font-medium text-foreground">keyword</span> dentro de la descripción del gasto para asignarle un logo automáticamente.
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Si un gasto coincide con <span className="font-medium text-foreground">varias reglas</span>, se usa la de <span className="font-medium text-foreground">prioridad más alta</span>. Usá números más altos para keywords más específicos.
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Ejemplo: keyword <span className="font-medium text-foreground">netflix</span> → cualquier gasto con "netflix" en la descripción mostrará el logo de Netflix.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-2">
         <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -170,8 +197,8 @@ function RuleForm({ form, onChange, onSave, onCancel, error, isSaving, title }: 
           onChange={e => onChange({ ...form, priority: Math.max(1, parseInt(e.target.value) || 1) })}
           min={1}
           placeholder="P"
-          className="w-16 h-10 px-3 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center"
           title="Prioridad"
+          className="w-16 h-10 px-3 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center"
         />
       </div>
 

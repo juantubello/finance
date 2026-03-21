@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Loader2, ArrowRight, RefreshCw, Info } from "lucide-react";
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -178,11 +178,38 @@ interface FormProps {
 }
 
 function RuleForm({ form, categories, onChange, onSave, onCancel, error, isSaving, title }: FormProps) {
+  const [showInfo, setShowInfo] = useState(false);
+
   return (
     <div className="bg-card border border-border/60 rounded-2xl p-4 mb-3 shadow-subtle">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{title}</div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">{title}</span>
+        <button
+          type="button"
+          onClick={() => setShowInfo(v => !v)}
+          className={`p-1 rounded-full transition-colors ${showInfo ? "bg-primary/15 text-primary" : "hover:bg-secondary text-muted-foreground"}`}
+          aria-label="¿Cómo funcionan las reglas?"
+        >
+          <Info size={13} />
+        </button>
+      </div>
 
-      <div className="flex gap-2 mb-2">
+      {showInfo && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/60 border border-border/40 space-y-1.5">
+          <p className="text-[11px] font-semibold text-foreground">¿Cómo funcionan las reglas?</p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Cuando se carga un resumen, cada gasto se analiza buscando el <span className="font-medium text-foreground">keyword</span> dentro de la descripción (sin importar mayúsculas).
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Si un gasto coincide con <span className="font-medium text-foreground">varias reglas</span>, se usa la de <span className="font-medium text-foreground">prioridad más alta</span>. Usá números más altos para keywords más específicos.
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Ejemplo: keyword <span className="font-medium text-foreground">netflix</span> con prioridad <span className="font-medium text-foreground">10</span> → cualquier gasto que contenga "netflix" en la descripción se categoriza automáticamente.
+          </p>
+        </div>
+      )}
+
+      <div className="flex gap-2 mb-3">
         <input
           type="text"
           value={form.keyword}
@@ -196,8 +223,8 @@ function RuleForm({ form, categories, onChange, onSave, onCancel, error, isSavin
           onChange={e => onChange({ ...form, priority: Math.max(1, parseInt(e.target.value) || 1) })}
           min={1}
           placeholder="P"
-          className="w-16 h-10 px-3 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center"
           title="Prioridad"
+          className="w-16 h-10 px-3 rounded-xl bg-secondary text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 text-center"
         />
       </div>
 

@@ -9,7 +9,7 @@ import CategoryBarChart from "@/components/CategoryBarChart";
 import SkeletonList from "@/components/SkeletonList";
 import StatementUploadModal from "@/components/StatementUploadModal";
 import PdfViewerModal from "@/components/PdfViewerModal";
-import { useCardStatement, useCardExpenses, useDeleteStatement, useCardCategoryRules, useCardCategories } from "@/hooks/useApi";
+import { useCardStatement, useCardExpenses, useDeleteStatement, useCardCategoryRules, useCardCategories, useLogoRules } from "@/hooks/useApi";
 import { api } from "@/services/api";
 import type { CardExpense, CardStatement, GastosByCategoryResponse, CardCategoryRuleDto, CardCategoryDto } from "@/types/api";
 
@@ -54,10 +54,13 @@ function ExpenseDetailSheet({ expense, statement, onClose }: {
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ backgroundColor: categoryColor + "33" }}
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden"
+              style={{ backgroundColor: expense.logoUrl ? "transparent" : categoryColor + "33" }}
             >
-              {expense.categoryIcon || "💳"}
+              {expense.logoUrl
+                ? <img src={expense.logoUrl} alt="" className="w-full h-full object-cover rounded-2xl" />
+                : expense.categoryIcon || "💳"
+              }
             </div>
             <div className="min-w-0">
               <p className="text-base font-bold text-foreground leading-tight">{expense.description}</p>
@@ -130,8 +133,13 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
       className="w-full flex items-center justify-between py-1 px-4 border-b border-border/40 active:bg-secondary/60 transition-colors text-left"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg flex-shrink-0">
-          {expense.categoryIcon || "💳"}
+        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg flex-shrink-0 overflow-hidden">
+          {expense.logoUrl
+            ? <img src={expense.logoUrl} alt="" className="w-full h-full object-cover" />
+            : expense.categoryIcon
+            ? <span>{expense.categoryIcon}</span>
+            : <span>💳</span>
+          }
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1 flex-wrap mb-0.5">
@@ -224,6 +232,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   const deleteMut = useDeleteStatement();
   const { data: cardCategoryRules = [] } = useCardCategoryRules();
   const { data: cardCategories = [] } = useCardCategories();
+  const { data: logoRules = [] } = useLogoRules();
 
   useEffect(() => { setConfirmDelete(false); }, [statement?.id]);
 
@@ -252,26 +261,47 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     [cardCategoryRules]
   );
 
+  // Logo rules sorted by priority descending (higher priority wins)
+  const sortedLogoRules = useMemo(
+    () => [...logoRules].sort((a, b) => b.priority - a.priority),
+    [logoRules]
+  );
+
   const resolvedExpenses = useMemo((): CardExpense[] => {
-    if (sortedRules.length === 0) return allExpenses;
     return allExpenses.map(e => {
-      if (e.categoryId !== null) return e; // already categorised by backend
       const desc = e.description.toLowerCase();
-      for (const rule of sortedRules) {
-        if (desc.includes(rule.keyword.toLowerCase())) {
-          const cat = catMap.get(rule.categoryId);
-          return {
-            ...e,
-            categoryId: rule.categoryId,
-            categoryName: rule.categoryName,
-            categoryColor: cat?.color ?? null,
-            categoryIcon: null,
-          };
+
+      // Apply category rules for uncategorised expenses
+      let resolved = e;
+      if (e.categoryId === null) {
+        for (const rule of sortedRules) {
+          if (desc.includes(rule.keyword.toLowerCase())) {
+            const cat = catMap.get(rule.categoryId);
+            resolved = {
+              ...e,
+              categoryId: rule.categoryId,
+              categoryName: rule.categoryName,
+              categoryColor: cat?.color ?? null,
+              categoryIcon: null,
+            };
+            break;
+          }
         }
       }
-      return e;
+
+      // Apply logo rules if no categoryIcon already set
+      if (!resolved.categoryIcon) {
+        for (const rule of sortedLogoRules) {
+          if (desc.includes(rule.keyword.toLowerCase())) {
+            resolved = { ...resolved, logoUrl: rule.logoUrl };
+            break;
+          }
+        }
+      }
+
+      return resolved;
     });
-  }, [allExpenses, sortedRules, catMap]);
+  }, [allExpenses, sortedRules, sortedLogoRules, catMap]);
 
   const filteredExpenses = useMemo(() => {
     let list = resolvedExpenses;

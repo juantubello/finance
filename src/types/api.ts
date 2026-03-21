@@ -225,6 +225,8 @@ export interface CardExpense {
   categoryName: string | null;
   categoryIcon: string | null;
   categoryColor: string | null;
+  /** Client-side resolved logo URL from logo rules */
+  logoUrl?: string | null;
 }
 
 export interface CardStatementSaveRequest {
