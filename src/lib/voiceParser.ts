@@ -64,19 +64,53 @@ function extractDigitNumber(token: string): number | null {
 }
 
 /**
+ * Replace consecutive word-number sequences with their digit equivalents.
+ * e.g. "quince mil en arnaldo" → "15000 en arnaldo"
+ */
+function normalizeWordNumbers(text: string): string {
+  const tokens = text.split(/\s+/);
+  const result: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const numTokens: string[] = [];
+    let j = i;
+    while (j < tokens.length) {
+      const t = tokens[j];
+      if (WORD_NUMBERS[t] !== undefined || t === "mil" || t === "millón" || t === "millones" || t === "millon") {
+        numTokens.push(t);
+        j++;
+      } else {
+        break;
+      }
+    }
+    if (numTokens.length > 0) {
+      const val = wordsToNumber(numTokens);
+      if (val !== null) {
+        result.push(String(val));
+        i = j;
+        continue;
+      }
+    }
+    result.push(tokens[i]);
+    i++;
+  }
+  return result.join(" ");
+}
+
+/**
  * Detects multiple items in a single transcript and sums their amounts.
  *
  * Handles two patterns:
  *   A) desc-first:   "arnaldo 1300 empanadas 12340 coca cola 1200"
  *   B) amount-first: "2800 en arnaldo y 6500 en carrefour"
- *                    "2500 en libros y 2000 en clips"
+ *                    "quince mil en arnaldo y doce mil en carrefour"
  *
  * Returns null if fewer than 2 items with amounts are found.
  */
 export function parseMultipleItems(
   transcript: string,
 ): { totalAmount: number; description: string } | null {
-  const tokens = transcript.toLowerCase().trim().split(/\s+/);
+  const tokens = normalizeWordNumbers(transcript.toLowerCase().trim()).split(/\s+/);
   const SKIP = new Set(["y", "e", "mas", "más"]);
   // Words that connect an amount to its following description (amount-first pattern)
   const CONNECTORS = new Set(["en", "para"]);
@@ -196,10 +230,20 @@ export function parseVoiceInput(transcript: string): { amount: number | null; de
   // If there's no amount, the whole transcript is the description.
   let description: string;
   if (amount !== null) {
+    // Remove all digit tokens (amounts) from the full transcript first,
+    // then also use the "en"/"para" split to keep all description words.
+    const stripped = lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
+    // If there's an "en"/"para" split, take everything (before + after) minus the connector
     const descMatch = lower.split(/ en | para /);
-    description = descMatch.length > 1
-      ? descMatch.slice(1).join(" ").trim()
-      : lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
+    if (descMatch.length > 1) {
+      // Reconstruct: all parts stripped of numbers, joined
+      description = descMatch
+        .map(p => p.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .join(" ");
+    } else {
+      description = stripped;
+    }
   } else {
     description = lower.replace(/[\d.,]+/g, "").replace(/\s+/g, " ").trim();
   }
