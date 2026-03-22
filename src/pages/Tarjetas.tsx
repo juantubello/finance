@@ -370,6 +370,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     if (!activeCategories || activeCategories.length === 0) return filteredExpenses;
     return filteredExpenses.filter(e =>
       activeCategories.some(ac =>
+        (ac.categoryId === 0 && e.categoryId == null) ||
         (ac.categoryId !== 0 && e.categoryId != null && ac.categoryId === e.categoryId) ||
         (ac.categoryName && e.categoryName && ac.categoryName === e.categoryName)
       )
