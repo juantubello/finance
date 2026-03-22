@@ -133,12 +133,12 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
       className="w-full flex items-center justify-between py-1 px-4 border-b border-border/40 active:bg-secondary/60 transition-colors text-left"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg flex-shrink-0 overflow-hidden">
+        <div className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-lg flex-shrink-0 overflow-hidden border border-border/30">
           {expense.logoUrl
             ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1" />
             : expense.categoryIcon
             ? <span>{expense.categoryIcon}</span>
-            : <span>💳</span>
+            : <span className="text-muted-foreground/40">💳</span>
           }
         </div>
         <div className="min-w-0">
@@ -225,7 +225,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   const [filterOpen, setFilterOpen] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
-  const [selectedExpense, setSelectedExpense] = useState<CardExpense | null>(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data: statement, isLoading: loadingStatement } = useCardStatement(cardType, year, month);
@@ -289,13 +289,11 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
         }
       }
 
-      // Apply logo rules if no categoryIcon already set
-      if (!resolved.categoryIcon) {
-        for (const rule of sortedLogoRules) {
-          if (desc.includes(rule.keyword.toLowerCase())) {
-            resolved = { ...resolved, logoUrl: rule.logoUrl };
-            break;
-          }
+      // Apply logo rules (logo takes priority over category icon)
+      for (const rule of sortedLogoRules) {
+        if (desc.includes(rule.keyword.toLowerCase())) {
+          resolved = { ...resolved, logoUrl: rule.logoUrl };
+          break;
         }
       }
 
@@ -378,6 +376,12 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
       )
     );
   }, [filteredExpenses, activeCategories]);
+
+  // Always derive from the latest resolved list so logoUrl / categoryColor are up-to-date
+  const selectedExpense = useMemo(
+    () => selectedExpenseId != null ? (resolvedExpenses.find(e => e.id === selectedExpenseId) ?? null) : null,
+    [selectedExpenseId, resolvedExpenses]
+  );
 
   const filteredTotals = useMemo(() => ({
     ars: filtered.reduce((s, e) => s + (e.amountArs ?? 0), 0) / 100,
@@ -771,7 +775,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
                 {/* Mobile */}
                 <div className="lg:hidden">
                   {filtered.map(e => (
-                    <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpense(e)} />
+                    <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpenseId(e.id)} />
                   ))}
                 </div>
                 {/* Desktop — grouped by date */}
@@ -782,7 +786,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
                       </div>
                       {items.map(e => (
-                        <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpense(e)} />
+                        <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpenseId(e.id)} />
                       ))}
                     </div>
                   ))}
@@ -808,7 +812,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
         <ExpenseDetailSheet
           expense={selectedExpense}
           statement={statement}
-          onClose={() => setSelectedExpense(null)}
+          onClose={() => setSelectedExpenseId(null)}
         />
       )}
     </>

@@ -95,9 +95,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
                   style={{ height: Math.max(barH, 44) }}
                 >
                   {logoUrl ? (
-                    <div className="w-9 h-9 rounded-full bg-white dark:bg-neutral-800 overflow-hidden shadow-sm flex items-center justify-center p-1 flex-shrink-0">
-                      <img src={logoUrl} alt="" className="w-full h-full object-contain" />
-                    </div>
+                    <img src={logoUrl} alt="" className="w-9 h-9 rounded-full object-cover shadow-sm" />
                   ) : (
                     <span className="text-xl leading-none">{cat.categoryIcon}</span>
                   )}
