@@ -21,6 +21,7 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfFileRef = useRef<File | null>(null);
+  const savingRef = useRef(false);
   const saveMutation = useSaveStatement();
   const { data: cards = [] } = useCards();
   const { dolarBBVA, isLoading: loadingBBVA } = useDolarBBVA();
@@ -48,6 +49,8 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
 
   const handleConfirm = async () => {
     if (!parsed || !exchangeRate.trim() || !cardId || !pdfFileRef.current) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setStep("saving");
     try {
       await saveMutation.mutateAsync({
@@ -65,8 +68,14 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
         pdfFile: pdfFileRef.current,
       });
       onSuccess();
-    } catch {
-      setError("Error al guardar. Verificá que el backend esté disponible.");
+    } catch (err: unknown) {
+      const is409 = err instanceof Error && err.message.includes("409");
+      setError(
+        is409
+          ? "Ya existe un resumen para esta tarjeta en ese mes/año."
+          : "Error al guardar. Verificá que el backend esté disponible."
+      );
+      savingRef.current = false;
       setStep("preview");
     }
   };
