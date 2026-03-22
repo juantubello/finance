@@ -263,7 +263,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
 
   // Logo rules sorted by priority descending (higher priority wins)
   const sortedLogoRules = useMemo(
-    () => [...logoRules].sort((a, b) => b.priority - a.priority),
+    () => [...logoRules].sort((a, b) => a.priority - b.priority),
     [logoRules]
   );
 
