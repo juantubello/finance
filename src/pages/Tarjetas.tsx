@@ -271,21 +271,20 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
     return allExpenses.map(e => {
       const desc = e.description.toLowerCase();
 
-      // Apply category rules for uncategorised expenses
+      // Always re-apply category rules client-side (rules take priority over backend assignment,
+      // so adding a new rule affects expenses that were already categorised by an older rule)
       let resolved = e;
-      if (e.categoryId === null) {
-        for (const rule of sortedRules) {
-          if (desc.includes(rule.keyword.toLowerCase())) {
-            const cat = catMap.get(rule.categoryId);
-            resolved = {
-              ...e,
-              categoryId: rule.categoryId,
-              categoryName: rule.categoryName,
-              categoryColor: cat?.color ?? null,
-              categoryIcon: null,
-            };
-            break;
-          }
+      for (const rule of sortedRules) {
+        if (desc.includes(rule.keyword.toLowerCase())) {
+          const cat = catMap.get(rule.categoryId);
+          resolved = {
+            ...e,
+            categoryId: rule.categoryId,
+            categoryName: rule.categoryName,
+            categoryColor: cat?.color ?? null,
+            categoryIcon: null,
+          };
+          break;
         }
       }
 
