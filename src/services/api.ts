@@ -25,6 +25,9 @@ import type {
   CardCategoryDto,
   CardCategoryRuleDto,
   LogoRuleDto,
+  PushSubscriptionDto,
+  PushSubscribeRequest,
+  PushUpdateRequest,
 } from "@/types/api";
 
 // En dev: Vite proxea /api → backend HTTP (evita Mixed Content con HTTPS)
@@ -318,4 +321,16 @@ export const api = {
   updateLogoRule: (id: number, data: { keyword: string; logoUrl: string; priority: number }) =>
     request<{ id: number }>(`/cards/logo-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteLogoRule: (id: number) => request<void>(`/cards/logo-rules/${id}`, { method: "DELETE" }),
+
+  // ── Push notifications ───────────────────────────────────────────────────
+  getVapidPublicKey: () => request<{ publicKey: string }>("/push/vapid-public-key"),
+  getPushSubscriptions: () => request<PushSubscriptionDto[]>("/push/subscriptions"),
+  subscribePush: (data: PushSubscribeRequest) =>
+    request<PushSubscriptionDto>("/push/subscribe", { method: "POST", body: JSON.stringify(data) }),
+  updatePushSubscription: (id: number, data: PushUpdateRequest) =>
+    request<PushSubscriptionDto>(`/push/subscriptions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deletePushSubscription: (id: number) =>
+    request<void>(`/push/subscriptions/${id}`, { method: "DELETE" }),
+  testPushNotification: (id: number) =>
+    request<{ sent: boolean }>(`/push/test/${id}`, { method: "POST" }),
 };

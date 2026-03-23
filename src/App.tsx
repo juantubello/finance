@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { FilterMode } from "@/components/DateFilter";
@@ -27,6 +27,7 @@ import LogoRules from "./pages/LogoRules";
 import CardsList from "./pages/CardsList";
 import type { GastoResponse, IngresoResponse, SavingMovement } from "@/types/api";
 import { parseMultipleItems, parseVoiceInput } from "@/lib/voiceParser";
+import { getDeviceId, getAlias } from "@/lib/pushNotifications";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +74,12 @@ function AppLayout() {
 
   useEffect(() => { applyTheme(theme); }, [theme]);
 
+  // Push notification re-registration alert
+  // Show if alias was previously set but deviceId was cleared (e.g. cache wipe)
+  const [showPushAlert, setShowPushAlert] = useState(() =>
+    getAlias() !== null && getDeviceId() === null
+  );
+
   // Gasto
   const openGastoAdd = () => { setEditGasto(null); setInitialData(null); setInitialEntryType("gasto"); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
   const openGastoEdit = (g: GastoResponse) => { setEditGasto(g); setInitialData(null); setInitialEntryType("gasto"); setGastoModalKey(k => k + 1); setGastoModalOpen(true); };
@@ -113,6 +120,22 @@ function AppLayout() {
     <>
       <SideMenu open={sideMenuOpen} onClose={() => setSideMenuOpen(false)} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
+      {showPushAlert && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 text-sm font-medium shadow-lg">
+          <span>Las notificaciones no están configuradas en este dispositivo.</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => { setShowPushAlert(false); setSettingsOpen(true); }}
+              className="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-xs font-semibold"
+            >
+              Configurar
+            </button>
+            <button onClick={() => setShowPushAlert(false)} className="p-1 rounded-full hover:bg-white/20 transition-colors">
+              <span className="text-lg leading-none">×</span>
+            </button>
+          </div>
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
         <Route path="/add" element={<AddExpense />} />

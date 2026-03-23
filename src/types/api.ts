@@ -165,6 +165,7 @@ export interface GastoCreateRequest {
   amount: number;
   categoryId: number | null;
   currencyId: number;
+  senderDeviceId?: string | null;
 }
 
 export interface CategoryCreateRequest {
@@ -239,6 +240,31 @@ export interface CardStatementSaveRequest {
   nextDueDate: string;
   exchangeRateUsd: number;
   expenses: CardExpenseParsed[];
+  senderDeviceId?: string | null;
+}
+
+export interface PushSubscriptionDto {
+  id: number;
+  deviceId: string;
+  alias: string;
+  endpoint: string;
+  active: boolean;
+  receiveOwn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PushSubscribeRequest {
+  deviceId: string;
+  alias: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+export interface PushUpdateRequest {
+  active: boolean;
+  receiveOwn: boolean;
 }
 
 export interface CardDto {

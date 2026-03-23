@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { GastoCreateRequest, GastosByCategoryResponse, CategoryCreateRequest, IngresoCreateRequest, SavingCreateRequest, CedearSPY, CardStatementSaveRequest, CardCategoryDto } from "@/types/api";
+import type { GastoCreateRequest, GastosByCategoryResponse, CategoryCreateRequest, IngresoCreateRequest, SavingCreateRequest, CedearSPY, CardStatementSaveRequest, CardCategoryDto, PushSubscribeRequest, PushUpdateRequest } from "@/types/api";
 
 export function useGastos(year: number, month: number) {
   return useQuery({
@@ -515,4 +515,38 @@ export function useDeleteLogoRule() {
     mutationFn: (id: number) => api.deleteLogoRule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["logoRules"] }),
   });
+}
+
+// ── Push notifications ──────────────────────────────────────────────────────
+
+export function usePushSubscriptions() {
+  return useQuery({ queryKey: ["pushSubscriptions"], queryFn: api.getPushSubscriptions, staleTime: 30_000 });
+}
+
+export function useSubscribePush() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PushSubscribeRequest) => api.subscribePush(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pushSubscriptions"] }),
+  });
+}
+
+export function useUpdatePushSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: PushUpdateRequest }) => api.updatePushSubscription(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pushSubscriptions"] }),
+  });
+}
+
+export function useDeletePushSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deletePushSubscription(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pushSubscriptions"] }),
+  });
+}
+
+export function useTestPushNotification() {
+  return useMutation({ mutationFn: (id: number) => api.testPushNotification(id) });
 }

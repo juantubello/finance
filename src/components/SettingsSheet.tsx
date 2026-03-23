@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash, CreditCard } from "lucide-react";
+import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash, CreditCard, Bell } from "lucide-react";
 import CardConfigSheet from "@/components/CardConfigSheet";
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryRules, useCreateCategoryRule, useDeleteCategoryRule } from "@/hooks/useApi";
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryRules, useCreateCategoryRule, useDeleteCategoryRule, usePushSubscriptions, useSubscribePush, useUpdatePushSubscription, useDeletePushSubscription, useTestPushNotification } from "@/hooks/useApi";
 import type { CategoryResponse } from "@/types/api";
 import type { Theme } from "@/App";
+import { getDeviceId, getAlias, getSubscriptionId, subscribePushNotifications, isPushSupported } from "@/lib/pushNotifications";
 
-type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm";
+type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm" | "notifications";
 
 interface Props {
   open: boolean;
@@ -357,6 +358,181 @@ function RuleForm({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+const ALIASES = ["JUAN", "CAMI"] as const;
+
+function NotificationsView({ onBack }: { onBack: () => void }) {
+  const { data: subscriptions = [], isLoading } = usePushSubscriptions();
+  const subscribeMut = useSubscribePush();
+  const updateMut = useUpdatePushSubscription();
+  const deleteMut = useDeletePushSubscription();
+  const testMut = useTestPushNotification();
+
+  const [selectedAlias, setSelectedAlias] = useState<string>(getAlias() ?? "");
+  const [registering, setRegistering] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const deviceId = getDeviceId();
+  const mySubscription = subscriptions.find(s => s.deviceId === deviceId);
+  const subId = mySubscription?.id ?? getSubscriptionId();
+
+  const handleRegister = async () => {
+    if (!selectedAlias) { setError("Seleccioná un alias"); return; }
+    if (!isPushSupported()) { setError("Tu navegador no soporta notificaciones push"); return; }
+    setRegistering(true);
+    setError(null);
+    try {
+      await subscribePushNotifications(selectedAlias, data => subscribeMut.mutateAsync(data));
+    } catch {
+      setError("No se pudo registrar. Verificá los permisos del navegador.");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handleToggle = async (field: "active" | "receiveOwn", value: boolean) => {
+    if (!mySubscription) return;
+    await updateMut.mutateAsync({
+      id: mySubscription.id,
+      data: {
+        active: field === "active" ? value : mySubscription.active,
+        receiveOwn: field === "receiveOwn" ? value : mySubscription.receiveOwn,
+      },
+    });
+  };
+
+  const handleTest = async () => {
+    const id = mySubscription?.id ?? subId;
+    if (!id) return;
+    setTestResult(null);
+    try {
+      await testMut.mutateAsync(id);
+      setTestResult("Notificación enviada");
+    } catch {
+      setTestResult("Error al enviar");
+    }
+    setTimeout(() => setTestResult(null), 3000);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 mb-2">
+        <button onClick={onBack} className="p-2 rounded-full hover:bg-secondary transition-colors">
+          <ChevronLeft size={20} className="text-muted-foreground" />
+        </button>
+        <h3 className="text-base font-bold text-foreground flex-1">Notificaciones</h3>
+      </div>
+
+      {/* Este dispositivo */}
+      <div className="rounded-2xl bg-secondary/60 border border-border/40 px-4 py-3 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Este dispositivo</p>
+
+        {mySubscription ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-foreground">{mySubscription.alias}</span>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${mySubscription.active ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-secondary text-muted-foreground"}`}>
+                {mySubscription.active ? "Activo" : "Inactivo"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-foreground">Recibir notificaciones</span>
+              <button
+                onClick={() => handleToggle("active", !mySubscription.active)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${mySubscription.active ? "bg-primary" : "bg-secondary border border-border"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${mySubscription.active ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm text-foreground">Recibir mis propios gastos</span>
+                <p className="text-[10px] text-muted-foreground">Para probar — te llegan tus propias notificaciones</p>
+              </div>
+              <button
+                onClick={() => handleToggle("receiveOwn", !mySubscription.receiveOwn)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ml-3 ${mySubscription.receiveOwn ? "bg-primary" : "bg-secondary border border-border"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${mySubscription.receiveOwn ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleTest}
+                disabled={testMut.isPending}
+                className="flex-1 h-9 rounded-xl bg-secondary text-sm font-medium text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {testMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />}
+                {testResult ?? "Probar notificación"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">Este dispositivo no está registrado.</p>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">¿Quién sos?</label>
+              <div className="flex gap-2">
+                {ALIASES.map(a => (
+                  <button
+                    key={a}
+                    onClick={() => setSelectedAlias(a)}
+                    className={`flex-1 h-10 rounded-xl text-sm font-semibold transition-colors ${selectedAlias === a ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-muted"}`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <button
+              onClick={handleRegister}
+              disabled={registering || !selectedAlias}
+              className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {registering ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+              Activar notificaciones
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Todos los dispositivos */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">Todos los dispositivos</p>
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-3">
+            <Loader2 size={14} className="animate-spin text-muted-foreground" />
+          </div>
+        ) : subscriptions.length === 0 ? (
+          <p className="text-sm text-muted-foreground px-1">No hay dispositivos registrados.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {subscriptions.map(s => (
+              <div key={s.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${s.deviceId === deviceId ? "bg-primary/10 border border-primary/20" : "bg-secondary"}`}>
+                <Bell size={16} className="text-muted-foreground flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{s.alias} {s.deviceId === deviceId && <span className="text-[10px] font-normal text-primary">(este)</span>}</p>
+                  <p className="text-[10px] text-muted-foreground">{s.active ? "Activo" : "Inactivo"}{s.receiveOwn ? " · recibe propios" : ""}</p>
+                </div>
+                <button
+                  onClick={() => deleteMut.mutate(s.id)}
+                  disabled={deleteMut.isPending}
+                  className="p-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Trash2 size={14} className="text-red-400" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Purge cache ──────────────────────────────────────────────────────────────
 
 function PurgeButton() {
@@ -425,6 +601,7 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
     categoryForm: "",
     rules: "Reglas automáticas",
     ruleForm: "",
+    notifications: "",
   };
 
   if (!open) return null;
@@ -468,6 +645,14 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
               >
                 <CreditCard size={20} className="text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground flex-1">Configuración tarjetas</span>
+                <ChevronRight size={16} className="text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setView("notifications")}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary transition-colors text-left"
+              >
+                <Bell size={20} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground flex-1">Notificaciones</span>
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>
               {/* Theme toggle */}
@@ -514,6 +699,10 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
 
           {view === "ruleForm" && (
             <RuleForm onBack={() => setView("rules")} />
+          )}
+
+          {view === "notifications" && (
+            <NotificationsView onBack={() => setView("main")} />
           )}
         </div>
       </div>

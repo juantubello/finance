@@ -64,6 +64,7 @@ export default function StatementUploadModal({ onClose, onSuccess }: Props) {
           nextDueDate: parsed.nextDueDate,
           exchangeRateUsd: Math.round(parseFloat(exchangeRate) * 100),
           expenses: parsed.expenses,
+          senderDeviceId: localStorage.getItem("deviceId"),
         },
         pdfFile: pdfFileRef.current,
       });

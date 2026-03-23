@@ -205,6 +205,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
       amount: parseAmountInput(amount),
       categoryId,
       currencyId,
+      senderDeviceId: localStorage.getItem("deviceId"),
     };
     try {
       if (entryType === "ahorro") {
