@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -8,7 +8,6 @@ import {
   useGastosForYear,
   useGastosByCategories,
   useGastosByCategoriesForYear,
-  useLabels,
   useCategories,
   useAvailable,
   useDolarBlue,
@@ -22,72 +21,56 @@ import CategoryBarChart from "@/components/CategoryBarChart";
 import ExpenseRow from "@/components/ExpenseRow";
 import SkeletonList from "@/components/SkeletonList";
 import type { GastoResponse } from "@/types/api";
-import { Search, BarChart2, List, ChevronDown, X, Plus, SlidersHorizontal } from "lucide-react";
+import { Search, BarChart2, List, ChevronDown, X, SlidersHorizontal } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
-import type { Label } from "@/types/api";
 
-function LabelInput({ allLabels, labelFilters, onToggle }: {
-  allLabels: Label[];
-  labelFilters: string[];
-  onToggle: (name: string) => void;
-}) {
-  const [input, setInput] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
+const SORT_LABELS = {
+  none: "Predeterminado",
+  desc: "Mayor importe",
+  asc: "Menor importe",
+  date_desc: "Fecha ↓",
+  date_asc: "Fecha ↑",
+} as const;
 
-  const suggestions = allLabels.filter(
-    l => !labelFilters.includes(l.name) && l.name.toLowerCase().includes(input.toLowerCase())
-  );
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
-  const commit = (name: string) => {
-    const clean = name.replace(/^#+/, "").trim();
-    if (clean) onToggle(clean);
-    setInput("");
-    setShowSuggestions(false);
-  };
+function buildSearchTokens(search: string) {
+  return search
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(Boolean)
+    .map((raw) => ({
+      raw,
+      type: raw.startsWith("#") ? "label" as const : "text" as const,
+      value: normalizeSearchValue(raw.replace(/^#+/, "")),
+    }))
+    .filter(token => token.value.length > 0);
+}
 
-  return (
-    <div className="relative">
-      <div className="flex gap-1.5">
-        <div className="relative flex-1 flex items-center bg-background rounded-xl">
-          <span className="pl-3 text-xs font-semibold text-muted-foreground select-none">#</span>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => { setInput(e.target.value); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commit(input);
-              if (e.key === "Escape") setShowSuggestions(false);
-            }}
-            placeholder="Agregar etiqueta..."
-            className="flex-1 h-8 pr-3 bg-transparent text-foreground text-xs outline-none placeholder:text-muted-foreground/40"
-          />
-        </div>
-        <button
-          onClick={() => commit(input)}
-          disabled={!input.trim()}
-          className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 py-1 max-h-40 overflow-y-auto">
-          {suggestions.map(l => (
-            <button
-              key={l.id}
-              onMouseDown={() => commit(l.name)}
-              className="w-full text-left px-4 py-2 text-xs text-foreground hover:bg-secondary transition-colors"
-            >
-              #{l.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function matchesSmartSearch(gasto: GastoResponse, tokens: ReturnType<typeof buildSearchTokens>) {
+  if (tokens.length === 0) return true;
+
+  const description = normalizeSearchValue(gasto.description);
+  const category = normalizeSearchValue(gasto.category ?? "");
+  const labels = gasto.labels?.map(label => normalizeSearchValue(label.name)) ?? [];
+
+  return tokens.every((token) => {
+    if (token.type === "label") {
+      return labels.some(label => label.includes(token.value));
+    }
+    return description.includes(token.value) || category.includes(token.value);
+  });
+}
+
+function formatLocalYMD(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 interface Props {
@@ -99,19 +82,24 @@ interface Props {
   month: number;
   onFilterModeChange: (mode: FilterMode) => void;
   onDateChange: (year: number, month: number) => void;
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 }
 
-export default function Index({ onEditGasto, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
+export default function Index({ onEditGasto, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange, searchOpen, onSearchOpenChange }: Props) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const mobileChartShellRef = useRef<HTMLDivElement | null>(null);
+  const mobileChartFrameRef = useRef<number | null>(null);
+  const pendingScrollTopRef = useRef(0);
+  const lastChartMotionRef = useRef<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const [search, setSearch] = useState("");
-  const [labelFilters, setLabelFilters] = useState<string[]>([]);
-  const [descFilters, setDescFilters] = useState<string[]>([]);
-  const [descInput, setDescInput] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState<"none" | "asc" | "desc" | "date_asc" | "date_desc">("none");
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["labels", "desc", "dates", "sort"]));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["dates", "sort"]));
   const toggleSection = (s: string) => setCollapsedSections(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   const isSectionCollapsed = (s: string, active: boolean) => !active && collapsedSections.has(s);
   const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
@@ -119,7 +107,6 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   const queryClient = useQueryClient();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
-
   // Prefetch ingresos in the background so navigation is instant
   useEffect(() => {
     if (filterMode === "month" && year > 0 && month > 0) {
@@ -132,7 +119,6 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   }, [year, month, filterMode]);
   const [showChart, setShowChart] = useState(true);
 
-  const { data: allLabels = [] } = useLabels();
   const { data: categoryDefs = [] } = useCategories();
   const { data: available } = useAvailable();
   const { data: dolarBlue } = useDolarBlue();
@@ -217,9 +203,10 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
       .map((c) => ({ id: c.categoryId, name: c.categoryName }));
   }, [chartCategories, activeIndices]);
 
-  const hasAdvancedFilter = labelFilters.length > 0 ||
-    descFilters.some(d => d.trim()) ||
-    !!dateFrom || !!dateTo;
+  const searchTokens = useMemo(() => buildSearchTokens(search), [search]);
+  const hasSearchQuery = searchTokens.length > 0;
+
+  const hasAdvancedFilter = !!dateFrom || !!dateTo;
 
   const filtered = useMemo(() => {
     if (!gastos) return [];
@@ -233,16 +220,8 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
         )
       );
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((g) => g.description.toLowerCase().includes(q));
-    }
-    if (labelFilters.length > 0) {
-      list = list.filter((g) => g.labels?.some(l => labelFilters.includes(l.name)));
-    }
-    if (descFilters.some(d => d.trim())) {
-      const terms = descFilters.map(d => d.trim().toLowerCase()).filter(Boolean);
-      list = list.filter((g) => terms.some(t => g.description.toLowerCase().includes(t)));
+    if (hasSearchQuery) {
+      list = list.filter((g) => matchesSmartSearch(g, searchTokens));
     }
     if (dateFrom) {
       list = list.filter((g) => g.dateTime.slice(0, 10) >= dateFrom);
@@ -256,14 +235,14 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     else if (sortOrder === "date_desc") list = [...list].sort((a, b) => b.dateTime.localeCompare(a.dateTime) || b.id - a.id);
     else list = [...list].sort((a, b) => b.dateTime.localeCompare(a.dateTime) || b.id - a.id);
     return list;
-  }, [gastos, activeCategories, search, labelFilters, descFilters, dateFrom, dateTo, sortOrder]);
+  }, [gastos, activeCategories, hasSearchQuery, searchTokens, dateFrom, dateTo, sortOrder]);
 
   const dolarBlueRate = dolarBlue?.compra;
 
   // Total ARS (all currencies converted) — used in the pill
   const total = useMemo(() => {
     if (!allGastos || allGastos.length === 0) return null;
-    const source = (hasAdvancedFilter || search.trim() || (activeCategories && activeCategories.length > 0))
+    const source = (hasAdvancedFilter || hasSearchQuery || (activeCategories && activeCategories.length > 0) || sortOrder !== "none")
       ? filtered
       : allGastos;
     let arsSum = 0;
@@ -274,7 +253,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
       arsSum += ars;
     }
     return { total: arsSum, approximate: !hasAll };
-  }, [allGastos, filtered, hasAdvancedFilter, search, activeCategories, forexRates, dolarBlueRate]);
+  }, [allGastos, filtered, hasAdvancedFilter, hasSearchQuery, activeCategories, sortOrder, forexRates, dolarBlueRate]);
 
   const selectedSum = useMemo(() => {
     if (!activeCategories || activeCategories.length === 0) return null;
@@ -300,50 +279,47 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     );
   };
 
-  const toggleLabel = (name: string) => {
-    setLabelFilters(prev =>
-      prev.includes(name) ? prev.filter(l => l !== name) : [...prev, name]
-    );
-  };
-
-  const addDescFilter = () => {
-    const val = descInput.trim();
-    if (val && !descFilters.includes(val)) {
-      setDescFilters(prev => [...prev, val]);
-    }
-    setDescInput("");
-  };
-
-  const removeDescFilter = (term: string) => {
-    setDescFilters(prev => prev.filter(d => d !== term));
-  };
-
   const clearAllFilters = () => {
-    setLabelFilters([]);
-    setDescFilters([]);
-    setDescInput("");
+    setSearch("");
     setDateFrom("");
     setDateTo("");
     setSortOrder("none");
+    setActiveIndices([]);
+    onSearchOpenChange(false);
   };
 
 
   const hasChart = loadingCats || chartCategories.length > 0;
+  const hasActiveViewState = hasSearchQuery || hasAdvancedFilter || activeIndices.length > 0 || sortOrder !== "none";
 
   // Filtered total for the filter panel badge (ARS-equivalent)
   const filteredTotal = useMemo(() => {
-    if (!hasAdvancedFilter) return null;
+    if (!hasActiveViewState) return null;
     let arsSum = 0;
     for (const g of filtered) {
       arsSum += toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency) ?? g.amount;
     }
     return { total: arsSum, count: filtered.length };
-  }, [filtered, hasAdvancedFilter, forexRates, dolarBlueRate]);
+  }, [filtered, hasActiveViewState, forexRates, dolarBlueRate]);
 
-  // Group filtered expenses by date (for desktop view)
+  const activeFeedback = useMemo(() => {
+    const chips: string[] = [];
+    for (const token of searchTokens) chips.push(token.raw);
+    if (activeCategories?.length) {
+      chips.push(activeCategories.length === 1 ? activeCategories[0].name : `${activeCategories.length} categorias`);
+    }
+    if (dateFrom || dateTo) chips.push(`${dateFrom || "inicio"} - ${dateTo || "hoy"}`);
+    if (sortOrder !== "none") chips.push(`Orden: ${SORT_LABELS[sortOrder]}`);
+    return chips;
+  }, [searchTokens, activeCategories, dateFrom, dateTo, sortOrder]);
+
+  // Group filtered expenses by date
   const groupedFiltered = useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const today = new Date();
+    const todayKey = formatLocalYMD(today);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = formatLocalYMD(yesterday);
     const map = new Map<string, typeof filtered>();
     for (const g of filtered) {
       const key = g.dateTime.slice(0, 10);
@@ -353,12 +329,64 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
     return Array.from(map.entries()).map(([key, items]) => {
       const d = new Date(key + "T12:00:00");
       const label =
-        d.getTime() === today.getTime() ? "Hoy" :
-        d.getTime() === yesterday.getTime() ? "Ayer" :
+        key === todayKey ? "hoy" :
+        key === yesterdayKey ? "ayer" :
         format(d, "d 'de' MMMM", { locale: es });
-      return { label, items };
+      let dayTotal = 0;
+      for (const g of items) {
+        dayTotal += toARS(g.amount, g.currencySymbol, forexRates, dolarBlueRate, g.currency) ?? g.amount;
+      }
+      return { label, items, dayTotal };
     });
-  }, [filtered]);
+  }, [filtered, forexRates, dolarBlueRate]);
+
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [filterMode, year, month, search, dateFrom, dateTo, sortOrder, showChart]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const node = listRef.current;
+    const shell = mobileChartShellRef.current;
+    if (!node || !shell) return;
+
+    const applyMotion = (scrollTop: number) => {
+      const progress = Math.min(Math.max((scrollTop - 2) / 150, 0), 1);
+      if (lastChartMotionRef.current === progress) return;
+      lastChartMotionRef.current = progress;
+
+      shell.style.setProperty("--chart-drain-progress", progress.toFixed(4));
+      shell.style.opacity = String(1 - progress * 0.24);
+      shell.style.transform = `translate3d(0, ${progress * 8}px, 0) scale(${1 - progress * 0.03})`;
+    };
+
+    const flushScroll = () => {
+      applyMotion(pendingScrollTopRef.current);
+      mobileChartFrameRef.current = null;
+    };
+
+    const onScroll = () => {
+      pendingScrollTopRef.current = node.scrollTop;
+      if (mobileChartFrameRef.current !== null) return;
+      mobileChartFrameRef.current = requestAnimationFrame(flushScroll);
+    };
+
+    node.addEventListener("scroll", onScroll, { passive: true });
+    applyMotion(node.scrollTop);
+
+    return () => {
+      node.removeEventListener("scroll", onScroll);
+      if (mobileChartFrameRef.current !== null) {
+        cancelAnimationFrame(mobileChartFrameRef.current);
+        mobileChartFrameRef.current = null;
+      }
+    };
+  }, [showChart, filterMode, year, month, search, dateFrom, dateTo, sortOrder, activeIndices.length]);
 
   return (
     <div className="flex flex-col h-[100dvh] lg:flex-row lg:bg-muted/30 animate-page-from-left">
@@ -388,7 +416,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
             <div className="flex flex-col items-center w-full">
               <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
               <div className="flex items-baseline gap-2 justify-center mb-2">
-                <span className={`text-4xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
+                <span className={`text-5xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
                   ${mask((available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 }))}
                 </span>
                 <span className="text-sm font-semibold text-muted-foreground">
@@ -413,19 +441,14 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   + Ingresos
                 </button>
               </div>
-              {selectedSum !== null && (
-                <span className="inline-flex items-center mt-1.5 px-3 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold tabular">
-                  Selec: ${selectedSum.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ARS
-                </span>
-              )}
             </div>
           )}
         </div>
 
-        {/* Collapsible chart */}
-        {(
-          <div className={`grid transition-[grid-template-rows] duration-400 ease-in-out ${showChart ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-            <div className="overflow-hidden min-h-0">
+        {/* Chart — desktop sidebar only; on mobile it lives inside the scroll container */}
+        <div className={`hidden lg:grid transition-[grid-template-rows] duration-400 ease-in-out ${showChart ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+          <div className="overflow-hidden min-h-0">
+            <div className="origin-top">
               {loadingCats ? (
                 <div className="flex gap-4 px-5 pb-2">
                   {[1, 2, 3, 4].map((i) => (
@@ -441,23 +464,24 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               ) : null}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Right panel (bottom on mobile, main content on desktop) ── */}
       <div className="flex-1 flex flex-col min-h-0 lg:h-full lg:bg-background relative">
 
-        {/* Search + currency filter + chart toggle */}
+        {/* Desktop controls */}
         {(
-          <div className="flex items-center gap-2 px-5 py-2 flex-shrink-0">
+          <div className="hidden lg:flex items-center gap-2 px-5 py-2 flex-shrink-0">
             {/* Search */}
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
+                ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar gastos..."
+                placeholder="Buscar gasto, categoria o #label"
                 className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
               />
             </div>
@@ -486,7 +510,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               <SlidersHorizontal size={14} />
               {hasAdvancedFilter && (
                 <span className="text-[10px] font-bold">
-                  {(labelFilters.length > 0 ? 1 : 0) + (descFilters.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sortOrder !== "none" ? 1 : 0)}
+                  {(dateFrom || dateTo ? 1 : 0) + (sortOrder !== "none" ? 1 : 0)}
                 </span>
               )}
             </button>
@@ -496,65 +520,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
 
         {/* ── Filter panel — absolute overlay ── */}
         {showFilters && (
-          <div className="absolute left-5 right-5 top-[52px] z-30 shadow-xl rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
-
-                {/* Labels */}
-                <div className="px-4 py-2">
-                  <button onClick={() => toggleSection("labels")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    <span>Etiquetas {labelFilters.length > 0 && <span className="text-primary">({labelFilters.length})</span>}</span>
-                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("labels", labelFilters.length > 0) ? "" : "rotate-180"}`} />
-                  </button>
-                  {!isSectionCollapsed("labels", labelFilters.length > 0) && (
-                    <div className="space-y-2 pb-2">
-                      {labelFilters.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {labelFilters.map(name => (
-                            <span key={name} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground">
-                              #{name}
-                              <button onClick={() => toggleLabel(name)} className="opacity-70 hover:opacity-100"><X size={10} /></button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <LabelInput allLabels={allLabels} labelFilters={labelFilters} onToggle={toggleLabel} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div className="px-4 py-2 border-t border-border/60">
-                  <button onClick={() => toggleSection("desc")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    <span>Descripción {descFilters.length > 0 && <span className="text-primary">({descFilters.length})</span>}</span>
-                    <ChevronDown size={13} className={`transition-transform ${isSectionCollapsed("desc", descFilters.length > 0) ? "" : "rotate-180"}`} />
-                  </button>
-                  {!isSectionCollapsed("desc", descFilters.length > 0) && (
-                    <div className="space-y-2 pb-2">
-                      {descFilters.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {descFilters.map(term => (
-                            <span key={term} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary text-primary-foreground">
-                              {term}
-                              <button onClick={() => removeDescFilter(term)} className="opacity-70 hover:opacity-100"><X size={10} /></button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={descInput}
-                          onChange={(e) => setDescInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") addDescFilter(); }}
-                          placeholder="Agregar palabra clave..."
-                          className="flex-1 h-8 px-3 rounded-xl bg-background text-foreground text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/40"
-                        />
-                        <button onClick={addDescFilter} disabled={!descInput.trim()} className="h-8 w-8 flex items-center justify-center rounded-xl bg-background text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors">
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+          <div className="absolute left-5 right-5 top-4 lg:top-[52px] z-30 shadow-xl rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
 
                 {/* Date range */}
                 <div className="px-4 py-2 border-t border-border/60">
@@ -585,10 +551,9 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                   {!isSectionCollapsed("sort", sortOrder !== "none") && (
                     <div className="flex flex-wrap gap-1.5 pb-2">
                       {(["none", "desc", "asc", "date_desc", "date_asc"] as const).map((opt) => {
-                        const labels: Record<typeof opt, string> = { none: "Predeterminado", desc: "Mayor importe", asc: "Menor importe", date_desc: "Fecha ↓", date_asc: "Fecha ↑" };
                         return (
                           <button key={opt} onClick={() => setSortOrder(opt)} className={`h-7 px-3 rounded-full text-[11px] font-semibold transition-all ${sortOrder === opt ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>
-                            {labels[opt]}
+                            {SORT_LABELS[opt]}
                           </button>
                         );
                       })}
@@ -597,7 +562,7 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                 </div>
 
                 {/* Filtered total + clear */}
-                {hasAdvancedFilter && filteredTotal && (
+                {hasActiveViewState && filteredTotal && (
                   <div className="flex items-center justify-between px-4 py-2.5">
                     <span className="text-xs text-muted-foreground">
                       {filteredTotal.count} resultado{filteredTotal.count !== 1 ? "s" : ""}
@@ -619,8 +584,71 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
           </div>
         )}
 
+        <div className="px-5 pb-2 flex flex-wrap items-center gap-2">
+          {hasChart && (
+            <button
+              onClick={() => setShowChart((v) => !v)}
+              className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold transition-all ${
+                showChart ? "bg-secondary text-muted-foreground hover:bg-muted" : "bg-primary text-primary-foreground"
+              }`}
+            >
+              {showChart ? "Ocultar grafico" : "Ver grafico"}
+            </button>
+          )}
+          {filteredTotal && (
+            <span className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold shadow-subtle ${
+              selectedSum !== null
+                ? "bg-primary/12 text-primary ring-1 ring-primary/20"
+                : "bg-white/90 text-foreground dark:bg-secondary/90"
+            }`}>
+              {filteredTotal.count} gasto{filteredTotal.count !== 1 ? "s" : ""} · ${filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
+            </span>
+          )}
+          {activeFeedback.slice(0, 4).map((chip) => (
+            <span key={chip} className="inline-flex items-center h-8 px-3 rounded-full bg-card/90 text-[11px] font-medium text-muted-foreground shadow-subtle">
+              {chip}
+            </span>
+          ))}
+          {hasActiveViewState && (
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+
         {/* ── Scrollable list ── */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
+          {/* Mobile: chart inside scroll so it disappears naturally when scrolling down */}
+          {showChart && (
+            <div
+              ref={mobileChartShellRef}
+              className="lg:hidden origin-top will-change-[transform,opacity] transition-transform duration-150 ease-out"
+              style={{
+                opacity: 1,
+                transform: "translate3d(0, 0, 0) scale(1)",
+                ["--chart-drain-progress" as string]: "0",
+              }}
+            >
+              <div className="pb-1">
+                {loadingCats ? (
+                  <div className="flex gap-4 px-5 pb-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="flex flex-col items-center gap-1 flex-shrink-0 w-[88px]">
+                        <div className="w-16 rounded-2xl bg-secondary animate-pulse" style={{ height: 175 }} />
+                        <div className="h-3 w-12 bg-secondary rounded animate-pulse" />
+                        <div className="h-2 w-7 bg-secondary rounded animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                ) : chartCategories.length > 0 ? (
+                  <CategoryBarChart categories={chartCategories} activeIndices={activeIndices} onSelect={handleCategorySelect} privacyMode={privacyMode} heightAmounts={chartHeightAmounts} />
+                ) : null}
+              </div>
+            </div>
+          )}
           {errorGastos ? (
             <div className="mx-5 mt-2 p-4 rounded-2xl bg-expense/10 text-expense text-sm">
               Error al cargar los gastos. Verificá tu conexión.
@@ -628,26 +656,22 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
           ) : loadingGastos ? (
             <SkeletonList />
           ) : (
-            <div className="animate-fade-in">
-              {/* Mobile: flat list */}
-              <div className="lg:hidden">
-                {filtered.map((g) => (
-                  <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} forexRates={forexRates} dolarBlueRate={dolarBlueRate} privacyMode={privacyMode} />
-                ))}
-              </div>
-              {/* Desktop: grouped by date */}
-              <div className="hidden lg:block">
-                {groupedFiltered.map(({ label, items }) => (
-                  <div key={label}>
-                    <div className="px-5 py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
-                    </div>
-                    {items.map((g) => (
-                      <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} forexRates={forexRates} dolarBlueRate={dolarBlueRate} privacyMode={privacyMode} />
-                    ))}
+            <div className="animate-fade-in space-y-1">
+              {groupedFiltered.map(({ label, items, dayTotal }) => (
+                <div key={label}>
+                  <div className="sticky top-0 z-10 px-5 py-2 flex items-center justify-between bg-transparent">
+                    <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">
+                      {label}
+                    </span>
+                    <span className="inline-flex items-center h-7 px-3 rounded-full bg-card/90 text-[10px] font-semibold text-muted-foreground tabular shadow-subtle dark:bg-secondary/90">
+                      {privacyMode ? "—" : `-$ ${dayTotal.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    </span>
                   </div>
-                ))}
-              </div>
+                  {items.map((g) => (
+                    <ExpenseRow key={g.id} gasto={g} onClick={() => onEditGasto(g)} forexRates={forexRates} dolarBlueRate={dolarBlueRate} privacyMode={privacyMode} />
+                  ))}
+                </div>
+              ))}
               {filtered.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-12">
                   {activeCategories
@@ -657,8 +681,45 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               )}
             </div>
           )}
-          <div className="h-20" />
+          <div className={`transition-all ${searchOpen ? "h-36" : "h-28"}`} />
         </div>
+
+        {searchOpen && (
+          <div className="fixed inset-x-0 bottom-0 z-40 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] lg:hidden pointer-events-none">
+            <div className="pointer-events-auto flex items-center gap-2 rounded-[28px] border border-white/70 bg-card/82 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88">
+              <Search size={18} className="text-muted-foreground flex-shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar gasto, categoria o #label"
+                className="flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/45"
+              />
+              <button
+                onClick={() => setShowFilters((v) => !v)}
+                className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors ${
+                  showFilters || hasAdvancedFilter || sortOrder !== "none"
+                    ? "bg-foreground text-background"
+                    : "bg-secondary text-muted-foreground"
+                }`}
+                aria-label="Configurar busqueda"
+              >
+                <SlidersHorizontal size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  if (search.trim()) setSearch("");
+                  else onSearchOpenChange(false);
+                }}
+                className="flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-muted-foreground"
+                aria-label={search.trim() ? "Limpiar busqueda" : "Cerrar busqueda"}
+              >
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

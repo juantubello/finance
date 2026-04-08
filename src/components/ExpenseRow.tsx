@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import type { GastoResponse } from "@/types/api";
 import type { ForexRates } from "@/hooks/useForexRates";
 import { isARS, isUSD, isExotic, toUSD, toARS } from "@/utils/currency";
@@ -26,31 +25,36 @@ export default function ExpenseRow({ gasto, onClick, forexRates, dolarBlueRate, 
   const fmt = (n: number, decimals = 2) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
+  const amountPillClass = isUSD(sym)
+    ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+    : "bg-white text-expense shadow-subtle dark:bg-secondary dark:text-expense";
+  const descriptionClampStyle: React.CSSProperties = {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
+
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between py-1 px-4 active:bg-secondary/60 transition-colors duration-200 text-left border-b border-border/40"
+      className="w-full flex items-center justify-between gap-3 px-5 py-3 text-left active:bg-secondary/35 transition-colors duration-200"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg flex-shrink-0">
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          style={{ backgroundColor: categoryColor }}
+        >
           {gasto.categoryIcon || "💰"}
         </div>
-        <div className="min-w-0">
-          {gasto.category && (
-            <span
-              className="inline-block text-[9px] font-semibold px-1 py-px rounded-full mb-0.5"
-              style={{ backgroundColor: categoryColor, color: "#374151" }}
-            >
-              {gasto.category}
-            </span>
-          )}
-          <div className="text-sm font-medium text-foreground truncate">{gasto.description}</div>
-          <div className="flex items-center gap-1 flex-wrap mt-0.5">
-            <span className="text-xs text-muted-foreground">
-              {format(new Date(gasto.dateTime), "dd/MM/yyyy")}
-            </span>
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-[12px] text-muted-foreground truncate">
+            {gasto.category || "Sin categoría"}
+          </div>
+          <div className="text-[0.98rem] leading-[1.2] font-semibold text-foreground" style={descriptionClampStyle}>{gasto.description}</div>
+          <div className="flex items-center gap-1 flex-wrap pt-0.5">
             {gasto.labels?.map(l => (
-              <span key={l.id} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+              <span key={l.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/12 text-primary">
                 #{l.name}
               </span>
             ))}
@@ -58,19 +62,19 @@ export default function ExpenseRow({ gasto, onClick, forexRates, dolarBlueRate, 
         </div>
       </div>
 
-      <div className="flex flex-col items-end flex-shrink-0 ml-3">
-        <div className="text-sm font-semibold tabular text-expense">
+      <div className="flex flex-col items-end flex-shrink-0 gap-1">
+        <div className={`inline-flex items-center rounded-full px-3 py-1.5 text-[0.86rem] font-semibold tabular ${amountPillClass}`}>
           {privacyMode ? "***" : `- ${sym} ${fmt(gasto.amount)}`}
         </div>
         {/* USD equivalent for exotic currencies */}
         {usdValue !== null && (
-          <div className="text-[10px] text-muted-foreground tabular">
+          <div className="text-[10px] text-muted-foreground tabular pr-1">
             {privacyMode ? "—" : `≈ USD ${fmt(usdValue)}`}
           </div>
         )}
         {/* ARS equivalent for all non-ARS currencies */}
         {arsValue !== null && (
-          <div className="text-[10px] text-muted-foreground tabular">
+          <div className="text-[10px] text-muted-foreground tabular pr-1">
             {privacyMode ? "—" : `≈ $${fmt(arsValue, 0)} ARS`}
           </div>
         )}

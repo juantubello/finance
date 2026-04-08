@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { TrendingUp, TrendingDown, PiggyBank, Search } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
@@ -160,6 +161,25 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
     );
   }, [movements, search]);
 
+  const groupedFiltered = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const map = new Map<string, typeof filteredMovements>();
+    for (const m of filteredMovements) {
+      const key = m.dateTime.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    return Array.from(map.entries()).map(([key, items]) => {
+      const d = new Date(key + "T12:00:00");
+      const label =
+        d.getTime() === today.getTime() ? "hoy" :
+        d.getTime() === yesterday.getTime() ? "ayer" :
+        format(d, "d 'de' MMMM", { locale: es });
+      return { label, items };
+    });
+  }, [filteredMovements]);
+
   return (
     <div className="flex flex-col h-[100dvh] max-w-lg mx-auto lg:max-w-3xl">
       <div className="flex-shrink-0">
@@ -261,8 +281,15 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
           </p>
         ) : (
           <div className="animate-fade-in">
-            {filteredMovements.map(m => (
-              <MovimientoRow key={m.id} movimiento={m} onClick={() => onEditMovimiento(m)} cryptoPrices={cryptoPrices} spyCedear={spyCedear} privacyMode={privacyMode} />
+            {groupedFiltered.map(({ label, items }) => (
+              <div key={label}>
+                <div className="sticky top-0 z-10 px-5 py-1.5 flex items-center justify-between bg-transparent">
+                  <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">{label}</span>
+                </div>
+                {items.map(m => (
+                  <MovimientoRow key={m.id} movimiento={m} onClick={() => onEditMovimiento(m)} cryptoPrices={cryptoPrices} spyCedear={spyCedear} privacyMode={privacyMode} />
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -292,37 +319,38 @@ function MovimientoRow({ movimiento: m, onClick, cryptoPrices, spyCedear, privac
     const ars = Math.abs(m.cantidad) * spyCedear.lastPrice;
     approxLabel = `≈ $${ars.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS`;
   }
+  const descriptionClampStyle: React.CSSProperties = {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
 
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between py-1 px-4 active:bg-secondary/60 transition-colors border-b border-border/40 text-left"
+      className="w-full flex items-center justify-between gap-3 px-5 py-3 active:bg-secondary/35 transition-colors text-left"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isDeposit ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 ${isDeposit ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
           {isDeposit
             ? <TrendingUp size={18} className="text-emerald-500" />
             : <TrendingDown size={18} className="text-red-500" />
           }
         </div>
-        <div className="min-w-0">
-          <span className="inline-block text-[9px] font-semibold px-1 py-px rounded-full mb-0.5 bg-secondary text-muted-foreground">
-            {TIPO_ICON[m.tipo] ?? ""} {m.ticker}
-          </span>
-          <div className="text-sm font-medium text-foreground truncate">
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-[12px] text-muted-foreground truncate">{TIPO_ICON[m.tipo] ?? ""} {m.ticker}</div>
+          <div className="text-[0.98rem] leading-[1.2] font-semibold text-foreground" style={descriptionClampStyle}>
             {m.description || (isDeposit ? "Depósito" : "Retiro")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {format(new Date(m.dateTime), "dd/MM/yyyy")}
           </div>
         </div>
       </div>
-      <div className="flex flex-col items-end flex-shrink-0 ml-3">
-        <div className={`text-sm font-semibold tabular ${isDeposit ? "text-emerald-500" : "text-red-500"}`}>
+      <div className="flex flex-col items-end flex-shrink-0 gap-1">
+        <div className={`inline-flex items-center rounded-full px-3 py-1.5 text-[0.86rem] font-semibold tabular ${isDeposit ? "bg-[#6b6b72] text-white" : "bg-white text-expense shadow-subtle dark:bg-secondary dark:text-expense"}`}>
           {privacyMode ? "***" : `${isDeposit ? "+" : ""}${m.cantidad.toLocaleString("es-AR", { minimumFractionDigits: m.decimales, maximumFractionDigits: m.decimales })} ${m.ticker}`}
         </div>
         {approxLabel && (
-          <div className="text-[10px] text-muted-foreground tabular">{privacyMode ? "—" : approxLabel}</div>
+          <div className="text-[10px] text-muted-foreground tabular pr-1">{privacyMode ? "—" : approxLabel}</div>
         )}
       </div>
     </button>

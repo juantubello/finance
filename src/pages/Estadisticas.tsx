@@ -15,11 +15,20 @@ import {
   X,
   Info,
 } from "lucide-react";
-import { useGastosForYear, useIngresosForYear, useDolarBlue } from "@/hooks/useApi";
+import {
+  useGastosForYear,
+  useIngresosForYear,
+  useDolarBlue,
+  useSavings,
+  useCryptoPrices,
+  tickerToCoingeckoId,
+  useUSDCARS,
+  useCedearSPY,
+} from "@/hooks/useApi";
 import { useForexRates } from "@/hooks/useForexRates";
 import { api } from "@/services/api";
 import { toARS } from "@/utils/currency";
-import type { CardStatement, CardExpense, GastoResponse } from "@/types/api";
+import type { CardStatement, CardExpense, GastoResponse, SavingMovement } from "@/types/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,6 +46,59 @@ function fmtK(n: number): string {
 
 function fmtARS(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+function avgRate(compra?: number | null, venta?: number | null): number | null {
+  if (typeof compra === "number" && typeof venta === "number") return (compra + venta) / 2;
+  if (typeof venta === "number") return venta;
+  if (typeof compra === "number") return compra;
+  return null;
+}
+
+function savingMovementToARS(
+  movement: SavingMovement,
+  {
+    blueRate,
+    usdcRate,
+    spyPrice,
+    cryptoPrices,
+  }: {
+    blueRate: number | null;
+    usdcRate: number | null;
+    spyPrice: number | null;
+    cryptoPrices?: Record<string, { usd: number }>;
+  }
+): number | null {
+  const qty = Math.abs(movement.cantidad);
+  if (qty === 0) return 0;
+
+  if (typeof movement.precioArs === "number" && Number.isFinite(movement.precioArs) && movement.precioArs > 0) {
+    return qty * movement.precioArs;
+  }
+
+  const ticker = movement.ticker.toUpperCase();
+  if (ticker === "ARS") return qty;
+
+  if (ticker === "USD") {
+    return blueRate != null ? qty * blueRate : null;
+  }
+
+  if (ticker === "USDC" || ticker === "USDT") {
+    const rate = usdcRate ?? blueRate;
+    return rate != null ? qty * rate : null;
+  }
+
+  if (movement.tipo === "cedear" && ticker === "SPY") {
+    return spyPrice != null ? qty * spyPrice : null;
+  }
+
+  if (movement.tipo === "crypto" && cryptoPrices && blueRate != null) {
+    const cgId = tickerToCoingeckoId(ticker);
+    const usdPrice = cgId ? cryptoPrices[cgId]?.usd : undefined;
+    if (typeof usdPrice === "number") return qty * usdPrice * blueRate;
+  }
+
+  return null;
 }
 
 // ─── MonthlyFlowChart ─────────────────────────────────────────────────────────
@@ -354,10 +416,21 @@ export default function Estadisticas({ onMenu, onSettings: _onSettings }: Props)
   // ── Data hooks ──────────────────────────────────────────────────────────────
   const { data: gastosData, isLoading: loadingGastos } = useGastosForYear(year);
   const { data: ingresosData, isLoading: loadingIngresos } = useIngresosForYear(year);
+  const { data: savingsData, isLoading: loadingSavings } = useSavings();
   const { data: dolarBlueData } = useDolarBlue();
+  const { data: usdcARS } = useUSDCARS();
+  const { data: spyCedear } = useCedearSPY();
   const { data: forexRates } = useForexRates();
 
   const dolarBlue = dolarBlueData?.compra;
+  const blueRate = avgRate(dolarBlueData?.compra, dolarBlueData?.venta);
+  const usdcRate = avgRate(usdcARS?.compra, usdcARS?.venta);
+
+  const cryptoTickers = useMemo(
+    () => [...new Set((savingsData ?? []).filter((m) => m.tipo === "crypto").map((m) => m.ticker.toUpperCase()))],
+    [savingsData]
+  );
+  const { data: cryptoPrices } = useCryptoPrices(cryptoTickers);
 
   // ── Card statements: 24 queries (12 VISA + 12 MC) ──────────────────────────
   const stmtQueries = useQueries({
@@ -433,6 +506,25 @@ export default function Estadisticas({ onMenu, onSettings: _onSettings }: Props)
     return arr;
   }, [ingresosData, forexRates, dolarBlue]);
 
+  const monthlyS = useMemo<number[]>(() => {
+    const arr = Array(12).fill(0) as number[];
+    if (!savingsData) return arr;
+    for (const movement of savingsData) {
+      const date = new Date(movement.dateTime);
+      if (date.getFullYear() !== year) continue;
+      const ars = savingMovementToARS(movement, {
+        blueRate,
+        usdcRate,
+        spyPrice: spyCedear?.lastPrice ?? null,
+        cryptoPrices,
+      });
+      if (ars == null) continue;
+      const monthIndex = date.getMonth();
+      arr[monthIndex] += movement.cantidad >= 0 ? ars : -ars;
+    }
+    return arr;
+  }, [savingsData, year, blueRate, usdcRate, spyCedear, cryptoPrices]);
+
   // ── Card totals per month ──────────────────────────────────────────────────
   const visaARS = useMemo<number[]>(() => {
     const arr = Array(12).fill(0) as number[];
@@ -469,7 +561,8 @@ export default function Estadisticas({ onMenu, onSettings: _onSettings }: Props)
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const totalG = useMemo(() => monthlyG.reduce((a, b) => a + b, 0), [monthlyG]);
   const totalI = useMemo(() => monthlyI.reduce((a, b) => a + b, 0), [monthlyI]);
-  const savingsRate = totalI > 0 ? ((totalI - totalG) / totalI) * 100 : 0;
+  const totalSavedNet = useMemo(() => monthlyS.reduce((a, b) => a + b, 0), [monthlyS]);
+  const savingsRate = totalI > 0 ? (totalSavedNet / totalI) * 100 : 0;
   const activeMonths = monthlyG.filter((v) => v > 0).length;
   const avgG = activeMonths > 0 ? totalG / activeMonths : 0;
   const totalCards = useMemo(
@@ -527,15 +620,17 @@ export default function Estadisticas({ onMenu, onSettings: _onSettings }: Props)
       i,
       g: monthlyG[i],
       net: monthlyI[i] - monthlyG[i],
-      rate: monthlyI[i] > 0 ? ((monthlyI[i] - monthlyG[i]) / monthlyI[i]) * 100 : 0,
+      rate: monthlyI[i] > 0 ? (monthlyS[i] / monthlyI[i]) * 100 : 0,
       ingr: monthlyI[i],
-    })).filter((row) => row.g > 0 || row.ingr > 0);
-  }, [monthlyG, monthlyI]);
+    })).filter((row) => row.g > 0 || row.ingr > 0 || monthlyS[row.i] !== 0);
+  }, [monthlyG, monthlyI, monthlyS]);
 
   // ── Loading / empty ────────────────────────────────────────────────────────
-  const isLoading = loadingGastos || loadingIngresos;
+  const isLoading = loadingGastos || loadingIngresos || loadingSavings;
   const hasData =
-    (gastosData && gastosData.length > 0) || (ingresosData && ingresosData.length > 0);
+    (gastosData && gastosData.length > 0) ||
+    (ingresosData && ingresosData.length > 0) ||
+    (savingsData && savingsData.length > 0);
 
   // ────────────────────────────────────────────────────────────────────────────
 

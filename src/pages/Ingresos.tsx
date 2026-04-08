@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
-import { Search } from "lucide-react";
+import { es } from "date-fns/locale";
+import { Search, X } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
 import { useNavigate } from "react-router-dom";
@@ -18,16 +19,18 @@ interface Props {
   month: number;
   onFilterModeChange: (mode: FilterMode) => void;
   onDateChange: (year: number, month: number) => void;
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 }
 
-export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
+export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange, searchOpen, onSearchOpenChange }: Props) {
   const navigate = useNavigate();
   const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
   const [pillReady, setPillReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setPillReady(true)); }, []);
   const [search, setSearch] = useState("");
   const [conversionMode, setConversionMode] = useState<"blue" | "usdc">("blue");
-
+  const [searchInput, setSearchInput] = useState<HTMLInputElement | null>(null);
   const monthQuery = useIngresos(filterMode === "month" ? year : 0, filterMode === "month" ? month : 0);
   const yearQuery = useIngresosForYear(filterMode === "year" ? year : 0);
 
@@ -82,6 +85,12 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
     return ingresos.filter(i => i.description.toLowerCase().includes(q));
   }, [ingresos, search]);
 
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = requestAnimationFrame(() => searchInput?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen, searchInput]);
+
   // Total in ARS (USD amounts converted using selected rate)
   const total = useMemo(() => {
     if (!ingresos.length) return null;
@@ -98,6 +107,30 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
             .reduce((s, i) => s + i.amount, 0),
     [ingresos]
   );
+
+  const groupedFiltered = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const map = new Map<string, typeof filtered>();
+    for (const i of filtered) {
+      const key = i.dateTime.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(i);
+    }
+    return Array.from(map.entries()).map(([key, items]) => {
+      const d = new Date(key + "T12:00:00");
+      const label =
+        d.getTime() === today.getTime() ? "hoy" :
+        d.getTime() === yesterday.getTime() ? "ayer" :
+        format(d, "d 'de' MMMM", { locale: es });
+      let dayTotal = 0;
+      for (const i of items) {
+        const isUSD = i.currencySymbol === "USD" || i.currencySymbol === "U$S";
+        dayTotal += isUSD && conversionRate ? i.amount * conversionRate : i.amount;
+      }
+      return { label, items, dayTotal };
+    });
+  }, [filtered, conversionRate]);
 
 
   return (
@@ -127,7 +160,7 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
           <>
             <p className="text-xs text-muted-foreground mb-0.5">Disponible</p>
             <div className="flex items-baseline gap-2 justify-center mb-2">
-              <span className={`text-4xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
+              <span className={`text-5xl font-bold tracking-tighter tabular ${available && available.disponible < 0 ? "text-red-500" : "text-foreground"}`}>
                 ${mask((available?.disponible ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 0 }))}
               </span>
               <span className="text-sm font-semibold text-muted-foreground">{available?.moneda ?? "ARS"}</span>
@@ -202,33 +235,18 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
         )}
       </div>
 
-      {/* Sparkline */}
-      <div className="flex-shrink-0 px-5 pb-2">
-        <IncomeSparkline
-          data={sparkData}
-          currentMonth={month}
-          currentYear={year}
-          privacyMode={privacyMode}
-          mask={mask}
-        />
-      </div>
-
-      {/* Search */}
-      <div className="px-5 py-2 flex-shrink-0">
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar ingresos..."
-            className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-emerald-400/30 transition-all placeholder:text-muted-foreground/50"
+      {/* Single scrollable area: sparkline + search + list (sparkline scrolls away naturally) */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div className="px-5 pb-2">
+          <IncomeSparkline
+            data={sparkData}
+            currentMonth={month}
+            currentYear={year}
+            privacyMode={privacyMode}
+            mask={mask}
           />
         </div>
-      </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto overscroll-contain">
         {error ? (
           <div className="mx-5 mt-2 p-4 rounded-2xl bg-red-50 text-red-500 text-sm">
             Error al cargar los ingresos.
@@ -237,15 +255,25 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
           <SkeletonList />
         ) : (
           <div className="animate-fade-in">
-            {filtered.map(i => (
-              <IngresoRow
-                key={i.id}
-                ingreso={i}
-                categoryColor={i.categoryColor ?? (i.categoryId != null ? categoryColorMap.get(i.categoryId) ?? null : null)}
-                onClick={() => onEditIngreso(i)}
-                conversionRate={conversionRate}
-                privacyMode={privacyMode}
-              />
+            {groupedFiltered.map(({ label, items, dayTotal }) => (
+              <div key={label}>
+                <div className="sticky top-0 z-10 px-5 py-1.5 flex items-center justify-between bg-transparent">
+                  <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">{label}</span>
+                  <span className="inline-flex items-center h-7 px-3 rounded-full bg-card/90 text-[10px] font-semibold text-muted-foreground tabular shadow-subtle dark:bg-secondary/90">
+                    {privacyMode ? "—" : `+$ ${dayTotal.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </span>
+                </div>
+                {items.map(i => (
+                  <IngresoRow
+                    key={i.id}
+                    ingreso={i}
+                    categoryColor={i.categoryColor ?? (i.categoryId != null ? categoryColorMap.get(i.categoryId) ?? null : null)}
+                    onClick={() => onEditIngreso(i)}
+                    conversionRate={conversionRate}
+                    privacyMode={privacyMode}
+                  />
+                ))}
+              </div>
             ))}
             {filtered.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-12">
@@ -254,8 +282,34 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
             )}
           </div>
         )}
-        <div className="h-20" />
+        <div className={`transition-all ${searchOpen ? "h-36" : "h-24"}`} />
       </div>
+
+      {searchOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] pointer-events-none lg:hidden">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-[28px] border border-white/70 bg-card/82 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88">
+            <Search size={18} className="text-muted-foreground flex-shrink-0" />
+            <input
+              ref={setSearchInput}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar ingreso por descripcion"
+              className="flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/45"
+            />
+            <button
+              onClick={() => {
+                if (search.trim()) setSearch("");
+                else onSearchOpenChange(false);
+              }}
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-muted-foreground"
+              aria-label={search.trim() ? "Limpiar busqueda" : "Cerrar busqueda"}
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -362,40 +416,36 @@ function IngresoRow({ ingreso, categoryColor, onClick, conversionRate, privacyMo
 }) {
   const isUSD = ingreso.currencySymbol === "USD" || ingreso.currencySymbol === "U$S";
   const arsValue = isUSD && conversionRate ? ingreso.amount * conversionRate : undefined;
+  const descriptionClampStyle: React.CSSProperties = {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
 
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between py-1 px-4 active:bg-secondary/60 transition-colors duration-200 text-left border-b border-border/40"
+      className="w-full flex items-center justify-between gap-3 px-5 py-3 active:bg-secondary/35 transition-colors duration-200 text-left"
     >
       <div className="flex items-center gap-3 min-w-0">
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-          style={{ backgroundColor: categoryColor ?? "var(--secondary)" }}
+          className="w-14 h-14 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          style={{ backgroundColor: categoryColor ? `${categoryColor}33` : "var(--secondary)" }}
         >
           {ingreso.categoryIcon || "💰"}
         </div>
-        <div className="min-w-0">
-          {ingreso.category && (
-            <span
-              className="inline-block text-[9px] font-semibold px-1 py-px rounded-full mb-0.5"
-              style={{ backgroundColor: categoryColor ?? "#e5e7eb", color: "#374151" }}
-            >
-              {ingreso.category}
-            </span>
-          )}
-          <div className="text-sm font-medium text-foreground truncate">{ingreso.description}</div>
-          <div className="text-xs text-muted-foreground">
-            {format(new Date(ingreso.dateTime), "dd/MM/yyyy")}
-          </div>
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-[12px] text-muted-foreground truncate">{ingreso.category || "Sin categoría"}</div>
+          <div className="text-[0.98rem] leading-[1.2] font-semibold text-foreground" style={descriptionClampStyle}>{ingreso.description}</div>
         </div>
       </div>
-      <div className="flex flex-col items-end flex-shrink-0 ml-3">
-        <div className="text-sm font-semibold tabular text-emerald-500">
+      <div className="flex flex-col items-end flex-shrink-0 gap-1">
+        <div className="inline-flex items-center rounded-full px-3 py-1.5 text-[0.86rem] font-semibold tabular bg-[#6b6b72] text-white">
           {privacyMode ? "***" : `+ ${ingreso.currencySymbol} ${ingreso.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
         </div>
         {arsValue !== undefined && (
-          <div className="text-[10px] text-muted-foreground tabular">
+          <div className="text-[10px] text-muted-foreground tabular pr-1">
             {privacyMode ? "—" : `≈ $${arsValue.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS`}
           </div>
         )}

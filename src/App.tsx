@@ -11,6 +11,7 @@ import ExpenseModal from "@/components/ExpenseModal";
 import IngresoModal from "@/components/IngresoModal";
 import AhorroModal from "@/components/AhorroModal";
 import VoiceOverlay from "@/components/VoiceOverlay";
+import VoiceExpenseQuickConfirm, { type VoiceExpenseDraft } from "@/components/VoiceExpenseQuickConfirm";
 import Index from "./pages/Index";
 import AddExpense from "./pages/AddExpense";
 import Categories from "./pages/Categories";
@@ -28,6 +29,8 @@ import CardsList from "./pages/CardsList";
 import type { GastoResponse, IngresoResponse, SavingMovement } from "@/types/api";
 import { parseMultipleItems, parseVoiceInput } from "@/lib/voiceParser";
 import { getDeviceId, getAlias } from "@/lib/pushNotifications";
+import { useCategories, useCategoryRules, useCurrencies } from "@/hooks/useApi";
+import { detectCategoryFromDescription } from "@/lib/categoryRules";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +63,10 @@ function AppLayout() {
   const [initialData, setInitialData] = useState<{ description?: string; amount?: number } | null>(null);
   const [initialEntryType, setInitialEntryType] = useState<"gasto" | "ingreso" | "ahorro">("gasto");
   const [voiceAddOpen, setVoiceAddOpen] = useState(false);
+  const [gastosSearchOpen, setGastosSearchOpen] = useState(false);
+  const [ingresosSearchOpen, setIngresosSearchOpen] = useState(false);
+  const [tarjetasSearchOpen, setTarjetasSearchOpen] = useState(false);
+  const [voiceExpenseDraft, setVoiceExpenseDraft] = useState<VoiceExpenseDraft | null>(null);
 
   // ── Ingreso / Ahorro modal (shared) ───────────────────────────────────────
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false);
@@ -71,8 +78,16 @@ function AppLayout() {
   const [ahorroModalOpen, setAhorroModalOpen] = useState(false);
   const [ahorroModalKey, setAhorroModalKey] = useState(0);
   const [editMovimiento, setEditMovimiento] = useState<SavingMovement | null>(null);
+  const { data: categories = [] } = useCategories();
+  const { data: categoryRules = [] } = useCategoryRules();
+  const { data: currencies = [] } = useCurrencies();
 
   useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => {
+    if (location.pathname !== "/") setGastosSearchOpen(false);
+    if (location.pathname !== "/ingresos") setIngresosSearchOpen(false);
+    if (location.pathname !== "/tarjetas") setTarjetasSearchOpen(false);
+  }, [location.pathname]);
 
   // Push notification re-registration alert
   // Show if alias was previously set but deviceId was cleared (e.g. cache wipe)
@@ -105,11 +120,35 @@ function AppLayout() {
   const handleVoiceAddConfirm = (transcript: string) => {
     setVoiceAddOpen(false);
     const multi = parseMultipleItems(transcript);
+    setInitialEntryType("gasto");
+    const parsed = multi
+      ? { description: multi.description, amount: multi.totalAmount }
+      : parseVoiceInput(transcript);
+    const description = parsed.description || transcript;
+    const amount = parsed.amount ?? undefined;
+    const autoCategory = detectCategoryFromDescription(description, categoryRules);
+    const arsCurrency = currencies.find(c => c.symbol === "$" || c.name.toUpperCase().includes("ARS") || c.name.toLowerCase().includes("peso"));
+    const matchedCategory = autoCategory ? categories.find(c => c.id === autoCategory.categoryId) : null;
+
+    if (amount != null && autoCategory && arsCurrency && matchedCategory) {
+      setVoiceExpenseDraft({
+        description,
+        amount,
+        categoryId: matchedCategory.id,
+        categoryName: matchedCategory.name,
+        categoryIcon: matchedCategory.icon,
+        categoryColor: matchedCategory.color,
+        currencyId: arsCurrency.id,
+        currencyCode: "ARS",
+        currencySymbol: arsCurrency.symbol,
+      });
+      return;
+    }
+
     if (multi) {
       setInitialData({ description: multi.description, amount: multi.totalAmount });
     } else {
-      const parsed = parseVoiceInput(transcript);
-      setInitialData({ description: parsed.description || transcript, amount: parsed.amount ?? undefined });
+      setInitialData({ description, amount });
     }
     setEditGasto(null);
     setGastoModalKey(k => k + 1);
@@ -137,12 +176,12 @@ function AppLayout() {
         </div>
       )}
       <Routes>
-        <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
+        <Route path="/" element={<Index onEditGasto={openGastoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} searchOpen={gastosSearchOpen} onSearchOpenChange={setGastosSearchOpen} />} />
         <Route path="/add" element={<AddExpense />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/category-rules" element={<CategoryRules />} />
-        <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
-        <Route path="/tarjetas" element={<Tarjetas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} />} />
+        <Route path="/ingresos" element={<Ingresos onEditIngreso={openIngresoEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} searchOpen={ingresosSearchOpen} onSearchOpenChange={setIngresosSearchOpen} />} />
+        <Route path="/tarjetas" element={<Tarjetas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} filterMode={filterMode} year={year} month={month} onFilterModeChange={setFilterMode} onDateChange={(y, m) => { setYear(y); setMonth(m); }} searchOpen={tarjetasSearchOpen} onSearchOpenChange={setTarjetasSearchOpen} />} />
         <Route path="/cards/config" element={<CardConfig />} />
         <Route path="/cards/config/categories" element={<CardCategories />} />
         <Route path="/cards/config/category-rules" element={<CardCategoryRules />} />
@@ -153,7 +192,38 @@ function AppLayout() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <VoiceOverlay open={voiceAddOpen} onCancel={() => setVoiceAddOpen(false)} onConfirm={handleVoiceAddConfirm} />
-      <FloatingActionButton onAdd={handleAdd} onVoice={() => setVoiceAddOpen(true)} />
+      <VoiceExpenseQuickConfirm
+        draft={voiceExpenseDraft}
+        onDismiss={() => setVoiceExpenseDraft(null)}
+        onSaved={() => setVoiceExpenseDraft(null)}
+        onEdit={(draft) => {
+          setVoiceExpenseDraft(null);
+          setEditGasto(null);
+          setInitialEntryType("gasto");
+          setInitialData({ description: draft.description, amount: draft.amount });
+          setGastoModalKey(k => k + 1);
+          setGastoModalOpen(true);
+        }}
+      />
+      <FloatingActionButton
+        onAdd={handleAdd}
+        onVoice={() => setVoiceAddOpen(true)}
+        showSearch={location.pathname === "/" || location.pathname === "/ingresos" || location.pathname === "/tarjetas"}
+        searchActive={
+          location.pathname === "/"
+            ? gastosSearchOpen
+            : location.pathname === "/ingresos"
+            ? ingresosSearchOpen
+            : location.pathname === "/tarjetas"
+            ? tarjetasSearchOpen
+            : false
+        }
+        onSearchToggle={() => {
+          if (location.pathname === "/") setGastosSearchOpen(v => !v);
+          if (location.pathname === "/ingresos") setIngresosSearchOpen(v => !v);
+          if (location.pathname === "/tarjetas") setTarjetasSearchOpen(v => !v);
+        }}
+      />
       <ExpenseModal key={`gasto-${gastoModalKey}`} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} initialEntryType={initialEntryType} />
       <IngresoModal key={`ingreso-${ingresoModalKey}`} open={ingresoModalOpen} onClose={closeIngreso} ingreso={editIngreso} defaultCategoryId={ingresoDefaultCategoryId} />
       <AhorroModal key={`ahorro-${ahorroModalKey}`} open={ahorroModalOpen} onClose={closeAhorro} movimiento={editMovimiento} />

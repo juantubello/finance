@@ -26,6 +26,8 @@ interface Props {
   month: number;
   onFilterModeChange: (mode: FilterMode) => void;
   onDateChange: (year: number, month: number) => void;
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 }
 
 // ─── Expense detail sheet ─────────────────────────────────────────────────────
@@ -126,14 +128,20 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
   const arsEquiv = isUsd && expense.amountUsd != null && exchangeRateUsd
     ? Math.round(expense.amountUsd * exchangeRateUsd / 100)
     : null;
+  const descriptionClampStyle: React.CSSProperties = {
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
 
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between py-1 px-4 border-b border-border/40 active:bg-secondary/60 transition-colors text-left"
+      className="w-full flex items-center justify-between gap-3 px-5 py-3 active:bg-secondary/35 transition-colors text-left"
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-lg flex-shrink-0 overflow-hidden border border-border/30">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="w-12 h-12 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border border-border/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
           {expense.logoUrl
             ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1" />
             : expense.categoryIcon
@@ -141,16 +149,8 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
             : <span className="text-muted-foreground/40">💳</span>
           }
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-0.5">
           <div className="flex items-center gap-1 flex-wrap mb-0.5">
-            <span
-              className={`inline-block text-[9px] font-semibold px-1.5 py-px rounded-full ${
-                expense.categoryName ? "" : "bg-secondary text-muted-foreground"
-              }`}
-              style={expense.categoryName ? { backgroundColor: categoryColor, color: "#374151" } : undefined}
-            >
-              {expense.categoryName ?? "Sin categoría"}
-            </span>
             <span className={`text-[9px] font-semibold px-1.5 py-px rounded-full ${
               expense.cardholderName === "Juan"
                 ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
@@ -166,16 +166,14 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
               </span>
             )}
           </div>
-          <div className="text-sm font-medium text-foreground truncate">{expense.description}</div>
-          <div className="text-xs text-muted-foreground">
-            {format(new Date(expense.date + "T12:00:00"), "dd/MM/yyyy")}
-          </div>
+          <div className="text-[11px] text-muted-foreground truncate">{expense.categoryName ?? "Sin categoría"}</div>
+          <div className="text-[0.92rem] leading-[1.18] font-semibold text-foreground" style={descriptionClampStyle}>{expense.description}</div>
         </div>
       </div>
-      <div className="flex flex-col items-end flex-shrink-0 ml-3">
-        <span className="text-sm font-semibold tabular text-expense">- {amountDisplay}</span>
+      <div className="flex flex-col items-end flex-shrink-0 gap-1">
+        <span className="inline-flex items-center rounded-full px-2.5 py-1.5 text-[0.8rem] font-semibold tabular bg-white text-expense shadow-subtle dark:bg-secondary dark:text-expense">- {amountDisplay}</span>
         {arsEquiv != null && (
-          <span className="text-[10px] text-muted-foreground tabular">
+          <span className="text-[10px] text-muted-foreground tabular pr-1">
             ≈ $ {(arsEquiv / 100).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
           </span>
         )}
@@ -196,8 +194,8 @@ function groupByDate(expenses: CardExpense[]) {
   return Array.from(map.entries()).map(([key, items]) => {
     const d = new Date(key + "T12:00:00");
     const label =
-      d.getTime() === today.getTime() ? "Hoy" :
-      d.getTime() === yesterday.getTime() ? "Ayer" :
+      d.getTime() === today.getTime() ? "hoy" :
+      d.getTime() === yesterday.getTime() ? "ayer" :
       format(d, "d 'de' MMMM", { locale: es });
     return { label, items };
   });
@@ -205,7 +203,7 @@ function groupByDate(expenses: CardExpense[]) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange }: Props) {
+export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, onFilterModeChange, onDateChange, searchOpen, onSearchOpenChange }: Props) {
   const [cardType, setCardType] = useState<CardType>("VISA");
   const [cardholderFilter, setCardholderFilter] = useState<CardholderFilter>("Todos");
   const [currencyFilter, setCurrencyFilter] = useState<CurrencyFilter>("Todos");
@@ -227,6 +225,7 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   const [pdfOpen, setPdfOpen] = useState(false);
   const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [searchInput, setSearchInput] = useState<HTMLInputElement | null>(null);
 
   const { data: statement, isLoading: loadingStatement } = useCardStatement(cardType, year, month);
   const deleteMut = useDeleteStatement();
@@ -425,6 +424,12 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
   };
 
   const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = requestAnimationFrame(() => searchInput?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen, searchInput]);
 
   const chip = (active: boolean) =>
     `px-3 py-1 text-xs font-semibold rounded-full transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-muted"}`;
@@ -664,19 +669,6 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
             {/* Expanded filter panel — absolute overlay, doesn't push list down */}
             {filterOpen && (
               <div className="absolute left-4 right-4 top-full z-30 shadow-xl rounded-2xl bg-secondary border border-border/60 overflow-hidden divide-y divide-border/60">
-                {/* Search — always visible */}
-                <div className="p-3">
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      placeholder="uber, cabify, netflix..."
-                      className="w-full h-9 pl-9 pr-3 rounded-xl bg-background text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-                    />
-                  </div>
-                </div>
                 {/* Date range */}
                 <div className="px-3 py-2">
                   <button onClick={() => toggleSection("dates")} className="w-full flex items-center justify-between py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
@@ -772,31 +764,48 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
               <p className="text-center text-sm text-muted-foreground py-12">No hay gastos con los filtros aplicados.</p>
             ) : (
               <div className="animate-fade-in">
-                {/* Mobile */}
-                <div className="lg:hidden">
-                  {filtered.map(e => (
-                    <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpenseId(e.id)} />
-                  ))}
-                </div>
-                {/* Desktop — grouped by date */}
-                <div className="hidden lg:block">
-                  {groupByDate(filtered).map(({ label, items }) => (
-                    <div key={label}>
-                      <div className="px-5 py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
-                      </div>
-                      {items.map(e => (
-                        <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpenseId(e.id)} />
-                      ))}
+                {groupByDate(filtered).map(({ label, items }) => (
+                  <div key={label}>
+                    <div className="sticky top-0 z-10 px-5 py-2 flex items-center justify-between bg-transparent">
+                      <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">{label}</span>
                     </div>
-                  ))}
-                </div>
+                    {items.map(e => (
+                      <CardExpenseRow key={e.id} expense={e} exchangeRateUsd={statement?.exchangeRateUsd} onClick={() => setSelectedExpenseId(e.id)} />
+                    ))}
+                  </div>
+                ))}
               </div>
             )}
-            <div className="h-20" />
+            <div className={`transition-all ${searchOpen ? "h-36" : "h-20"}`} />
           </div>
         </div>
       </div>
+
+      {searchOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] pointer-events-none lg:hidden">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-[28px] border border-white/70 bg-card/82 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88">
+            <Search size={18} className="text-muted-foreground flex-shrink-0" />
+            <input
+              ref={setSearchInput}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar consumo por descripcion"
+              className="flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/45"
+            />
+            <button
+              onClick={() => {
+                if (search.trim()) setSearch("");
+                else onSearchOpenChange(false);
+              }}
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-muted-foreground"
+              aria-label={search.trim() ? "Limpiar busqueda" : "Cerrar busqueda"}
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {showUpload && (
         <StatementUploadModal onClose={() => setShowUpload(false)} onSuccess={() => setShowUpload(false)} />

@@ -45,6 +45,8 @@ interface Props {
 }
 
 const BAR_MAX_H = 175;
+const BAR_VISIBLE_H = 177;
+const CHART_ITEM_H = 233;
 
 export default function CategoryBarChart({ categories, activeIndices, onSelect, heightAmounts, privacyMode, logoUrls }: Props) {
   const isDark = useIsDark();
@@ -58,7 +60,7 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
   const hasSelection = activeIndices.length > 0;
 
   return (
-    <div className="flex gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1">
+    <div className="flex items-start gap-3 px-5 overflow-x-auto no-scrollbar pb-2 pt-1.5">
       {categories.map((cat, i) => {
         const h = heights[i] ?? cat.amount;
         const pct = totalHeight > 0 ? Math.round((h / totalHeight) * 100) : 0;
@@ -73,42 +75,59 @@ export default function CategoryBarChart({ categories, activeIndices, onSelect, 
           <button
             key={i}
             onClick={() => onSelect(i)}
-            className={`flex flex-col items-center flex-shrink-0 w-[88px] focus:outline-none transition-opacity ${
+            className={`flex flex-col items-center justify-start flex-shrink-0 w-[88px] focus:outline-none transition-opacity ${
               isDimmed ? "opacity-40" : "opacity-100"
             }`}
+            style={{ height: CHART_ITEM_H }}
           >
-            <div
-              className={`w-[68px] rounded-2xl border-2 border-dashed relative transition-all ${
-                isActive ? "border-primary" : "border-border"
-              }`}
-              style={{ height: BAR_MAX_H }}
-            >
-              {/* Colored fill — grows from bottom */}
+            <div className="w-[68px] flex items-end pt-[2px]" style={{ height: BAR_VISIBLE_H }}>
               <div
-                className="absolute bottom-0 w-full rounded-2xl transition-all duration-500"
-                style={{ height: barH, backgroundColor: color }}
-              />
-              {/* Icon — centered over the fill area, never clipped */}
-              {(logoUrl || cat.categoryIcon) && (
+                className={`w-[68px] rounded-2xl border-2 border-dashed relative overflow-hidden transition-colors ${isActive ? "border-primary" : "border-border"}`}
+                style={{
+                  height: BAR_MAX_H,
+                  clipPath: "inset(calc(var(--chart-drain-progress, 0) * 100%) 0 0 0)",
+                  opacity: "calc(1 - (var(--chart-drain-progress, 0) * 0.82))",
+                }}
+              >
                 <div
-                  className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none"
-                  style={{ height: Math.max(barH, 44) }}
-                >
-                  {logoUrl ? (
-                    <img src={logoUrl} alt="" className="w-9 h-9 rounded-full object-cover shadow-sm" />
-                  ) : (
-                    <span className="text-xl leading-none">{cat.categoryIcon}</span>
-                  )}
-                </div>
-              )}
+                  className="absolute bottom-0 w-full rounded-2xl transition-transform duration-150 will-change-transform"
+                  style={{
+                    height: barH,
+                    backgroundColor: color,
+                    transformOrigin: "bottom center",
+                    transform: "scaleY(calc(1 - var(--chart-drain-progress, 0)))",
+                  }}
+                />
+                {(logoUrl || cat.categoryIcon) && (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-[opacity,transform] duration-150 will-change-[opacity,transform]"
+                    style={{
+                      height: Math.max(barH, 44),
+                      opacity: "calc(1 - (var(--chart-drain-progress, 0) * 1.05))",
+                      transform: "translate3d(0, calc(var(--chart-drain-progress, 0) * 22px), 0) scale(calc(1 - (var(--chart-drain-progress, 0) * 0.18)))",
+                    }}
+                  >
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="" className="w-9 h-9 rounded-full object-cover shadow-sm" />
+                    ) : (
+                      <span className="text-xl leading-none">{cat.categoryIcon}</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="text-[10px] font-semibold text-muted-foreground mt-1 w-full text-center truncate px-1">
-              {cat.categoryName}
-            </span>
-            <span className="text-[11px] font-bold text-foreground tabular">
-              {privacyMode ? "***" : `${showSymbol ? `${cat.currencySymbol} ` : ""}${formatAmount(cat.amount)}`}
-            </span>
-            <span className="text-[10px] text-muted-foreground tabular">{privacyMode ? "—" : `${pct}%`}</span>
+            <div
+              className="w-full mt-1 transition-opacity duration-150"
+              style={{ opacity: "calc(1 - (var(--chart-drain-progress, 0) * 0.55))" }}
+            >
+              <div className="h-6 text-[10px] leading-3 font-semibold text-muted-foreground w-full text-center truncate px-1">
+                {cat.categoryName}
+              </div>
+              <div className="h-[14px] text-[11px] leading-[14px] font-bold text-foreground tabular">
+                {privacyMode ? "***" : `${showSymbol ? `${cat.currencySymbol} ` : ""}${formatAmount(cat.amount)}`}
+              </div>
+              <div className="h-3.5 text-[10px] leading-[14px] text-muted-foreground tabular">{privacyMode ? "—" : `${pct}%`}</div>
+            </div>
           </button>
         );
       })}
