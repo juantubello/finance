@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { X, Mic, Trash2, Loader2, Check, ChevronDown } from "lucide-react";
 import type { GastoResponse } from "@/types/api";
-import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto, useLabels, useCategoryRules, useCreateIngreso, useSavingAssets, useCreateSaving } from "@/hooks/useApi";
+import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDeleteGasto, useLabels, useCategoryRules, useLabelRules, useCreateIngreso, useSavingAssets, useCreateSaving } from "@/hooks/useApi";
 import { parseVoiceInput, parseMultipleItems } from "@/lib/voiceParser";
 import VoiceOverlay from "@/components/VoiceOverlay";
-import { detectCategoryFromDescription } from "@/lib/categoryRules";
+import { detectCategoryFromDescription, detectLabelsFromDescription } from "@/lib/categoryRules";
 import { api } from "@/services/api";
 
 type EntryType = "gasto" | "ingreso" | "ahorro";
@@ -55,6 +55,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
   const { data: currencies = [], isLoading: loadingCurrencies } = useCurrencies();
   const { data: allLabels = [] } = useLabels();
   const { data: categoryRules = [] } = useCategoryRules();
+  const { data: labelRules = [] } = useLabelRules();
   const createMut = useCreateGasto();
   const updateMut = useUpdateGasto();
   const deleteMut = useDeleteGasto();
@@ -96,6 +97,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
   const currencyBtnRef = useRef<HTMLButtonElement>(null);
   // Tracks whether the user manually picked a category — if so, don't override with auto-detection.
   const categoryManuallySet = useRef(false);
+  const autoTagNamesRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (gasto) return;
@@ -111,6 +113,25 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
       setAutoCategoryKeyword(null);
     }
   }, [description, categoryRules]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (gasto) return;
+
+    const autoTagNames = detectLabelsFromDescription(description, labelRules)
+      .map((label) => label.name);
+
+    setTags((prev) => {
+      const previousAutoTags = autoTagNamesRef.current;
+      const manualTags = prev.filter((tag) => !previousAutoTags.includes(tag));
+      const merged = [...manualTags];
+      for (const tag of autoTagNames) {
+        if (!merged.includes(tag)) merged.push(tag);
+      }
+      return merged;
+    });
+
+    autoTagNamesRef.current = autoTagNames;
+  }, [description, labelRules, gasto]);
 
 
   useEffect(() => {

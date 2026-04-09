@@ -135,6 +135,51 @@ export function useLabels() {
   return useQuery({ queryKey: ["labels"], queryFn: api.getLabels, staleTime: 60 * 1000 });
 }
 
+export function useCreateLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string }) => api.createLabel(data),
+    onSuccess: (created) => {
+      qc.setQueryData(["labels"], (prev: { id: number; name: string }[] | undefined) =>
+        prev ? [...prev, created].sort((a, b) => a.name.localeCompare(b.name)) : [created]
+      );
+      qc.invalidateQueries({ queryKey: ["labels"] });
+    },
+  });
+}
+
+export function useUpdateLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name: string } }) => api.updateLabel(id, data),
+    onSuccess: (updated) => {
+      qc.setQueryData(["labels"], (prev: { id: number; name: string }[] | undefined) =>
+        prev
+          ? prev.map((label) => (label.id === updated.id ? updated : label)).sort((a, b) => a.name.localeCompare(b.name))
+          : [updated]
+      );
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      qc.invalidateQueries({ queryKey: ["labelRules"] });
+      qc.invalidateQueries({ queryKey: ["gastos"] });
+    },
+  });
+}
+
+export function useDeleteLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteLabel(id),
+    onSuccess: (_data, id) => {
+      qc.setQueryData(["labels"], (prev: { id: number; name: string }[] | undefined) =>
+        prev ? prev.filter((label) => label.id !== id) : prev
+      );
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      qc.invalidateQueries({ queryKey: ["labelRules"] });
+      qc.invalidateQueries({ queryKey: ["gastos"] });
+    },
+  });
+}
+
 export function useCategoryRules() {
   return useQuery({ queryKey: ["categoryRules"], queryFn: api.getCategoryRules, staleTime: 60 * 1000 });
 }
@@ -160,6 +205,45 @@ export function useDeleteCategoryRule() {
   return useMutation({
     mutationFn: (id: number) => api.deleteCategoryRule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["categoryRules"] }),
+  });
+}
+
+export function useLabelRules() {
+  return useQuery({ queryKey: ["labelRules"], queryFn: api.getLabelRules, staleTime: 60 * 1000 });
+}
+
+export function useCreateLabelRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { keyword: string; labelIds: number[] }) => api.createLabelRule(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["labelRules"] }),
+  });
+}
+
+export function useUpdateLabelRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { keyword: string; labelIds: number[] } }) => api.updateLabelRule(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["labelRules"] }),
+  });
+}
+
+export function useDeleteLabelRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteLabelRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["labelRules"] }),
+  });
+}
+
+export function useApplyLabelRules() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.applyLabelRules(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["labelRules"] });
+      qc.invalidateQueries({ queryKey: ["gastos"] });
+    },
   });
 }
 

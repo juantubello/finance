@@ -123,14 +123,9 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
         d.getTime() === today.getTime() ? "hoy" :
         d.getTime() === yesterday.getTime() ? "ayer" :
         format(d, "d 'de' MMMM", { locale: es });
-      let dayTotal = 0;
-      for (const i of items) {
-        const isUSD = i.currencySymbol === "USD" || i.currencySymbol === "U$S";
-        dayTotal += isUSD && conversionRate ? i.amount * conversionRate : i.amount;
-      }
-      return { label, items, dayTotal };
+      return { label, items };
     });
-  }, [filtered, conversionRate]);
+  }, [filtered]);
 
 
   return (
@@ -255,13 +250,10 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
           <SkeletonList />
         ) : (
           <div className="animate-fade-in">
-            {groupedFiltered.map(({ label, items, dayTotal }) => (
+            {groupedFiltered.map(({ label, items }) => (
               <div key={label}>
-                <div className="sticky top-0 z-10 px-5 py-1.5 flex items-center justify-between bg-transparent">
+                <div className="sticky top-0 z-10 px-5 py-1.5 flex items-center bg-transparent">
                   <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">{label}</span>
-                  <span className="inline-flex items-center h-7 px-3 rounded-full bg-card/90 text-[10px] font-semibold text-muted-foreground tabular shadow-subtle dark:bg-secondary/90">
-                    {privacyMode ? "—" : `+$ ${dayTotal.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  </span>
                 </div>
                 {items.map(i => (
                   <IngresoRow
@@ -426,26 +418,26 @@ function IngresoRow({ ingreso, categoryColor, onClick, conversionRate, privacyMo
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 px-5 py-3 active:bg-secondary/35 transition-colors duration-200 text-left"
+      className="w-full flex items-center justify-between gap-3 px-5 py-2.5 active:bg-secondary/35 transition-colors duration-200 text-left"
     >
       <div className="flex items-center gap-3 min-w-0">
         <div
-          className="w-14 h-14 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-[1.2rem] flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
           style={{ backgroundColor: categoryColor ? `${categoryColor}33` : "var(--secondary)" }}
         >
           {ingreso.categoryIcon || "💰"}
         </div>
         <div className="min-w-0 space-y-0.5">
-          <div className="text-[12px] text-muted-foreground truncate">{ingreso.category || "Sin categoría"}</div>
-          <div className="text-[0.98rem] leading-[1.2] font-semibold text-foreground" style={descriptionClampStyle}>{ingreso.description}</div>
+          <div className="text-[11px] text-muted-foreground truncate">{ingreso.category || "Sin categoría"}</div>
+          <div className="text-[0.91rem] leading-[1.18] font-semibold text-foreground" style={descriptionClampStyle}>{ingreso.description}</div>
         </div>
       </div>
       <div className="flex flex-col items-end flex-shrink-0 gap-1">
-        <div className="inline-flex items-center rounded-full px-3 py-1.5 text-[0.86rem] font-semibold tabular bg-[#6b6b72] text-white">
+        <div className="inline-flex items-center rounded-full px-2.5 py-1.5 text-[0.81rem] font-semibold tabular bg-[#6b6b72] text-white">
           {privacyMode ? "***" : `+ ${ingreso.currencySymbol} ${ingreso.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
         </div>
         {arsValue !== undefined && (
-          <div className="text-[10px] text-muted-foreground tabular pr-1">
+          <div className="text-[9px] text-muted-foreground tabular pr-1">
             {privacyMode ? "—" : `≈ $${arsValue.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS`}
           </div>
         )}

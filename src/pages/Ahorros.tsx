@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { TrendingUp, TrendingDown, PiggyBank, Search } from "lucide-react";
+import { TrendingUp, TrendingDown, PiggyBank, Search, X } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
 import { useSavingBalance, useSavings, useCryptoPrices, tickerToCoingeckoId, useDolarBlue, useUSDCARS, useCedearSPY } from "@/hooks/useApi";
@@ -15,6 +15,8 @@ interface Props {
   onMenu: () => void;
   onSettings: () => void;
   onEditMovimiento: (m: SavingMovement) => void;
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 }
 
 const TIPO_ICON: Record<string, string> = {
@@ -104,7 +106,7 @@ function BalanceBarChart({ assets, colors, privacyMode }: { assets: AssetWithUSD
   );
 }
 
-export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props) {
+export default function Ahorros({ onMenu, onSettings, onEditMovimiento, searchOpen, onSearchOpenChange }: Props) {
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -151,6 +153,7 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
   const totalUSD = assetsWithUSD.reduce((sum, a) => sum + (a.usdValue ?? 0), 0);
   const { privacyMode, toggle: togglePrivacy, mask } = usePrivacyMode();
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState<HTMLInputElement | null>(null);
 
   const filteredMovements = useMemo(() => {
     if (!search.trim()) return movements;
@@ -179,6 +182,12 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
       return { label, items };
     });
   }, [filteredMovements]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = requestAnimationFrame(() => searchInput?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen, searchInput]);
 
   return (
     <div className="flex flex-col h-[100dvh] max-w-lg mx-auto lg:max-w-3xl">
@@ -255,19 +264,6 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
           <BalanceBarChart assets={assetsWithUSD} colors={colors} privacyMode={privacyMode} />
         )}
 
-        {/* Search */}
-        <div className="px-5 py-2">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar movimientos..."
-              className="w-full h-9 pl-9 pr-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
-            />
-          </div>
-        </div>
       </div>
 
       {/* Scrollable movements list */}
@@ -293,8 +289,34 @@ export default function Ahorros({ onMenu, onSettings, onEditMovimiento }: Props)
             ))}
           </div>
         )}
-        <div className="h-20" />
+        <div className={`transition-all ${searchOpen ? "h-36" : "h-20"}`} />
       </div>
+
+      {searchOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+84px)] pointer-events-none lg:hidden">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-[28px] border border-white/70 bg-card/82 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/88">
+            <Search size={18} className="text-muted-foreground flex-shrink-0" />
+            <input
+              ref={setSearchInput}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar movimiento o ticker"
+              className="flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/45"
+            />
+            <button
+              onClick={() => {
+                if (search.trim()) setSearch("");
+                else onSearchOpenChange(false);
+              }}
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-muted-foreground"
+              aria-label={search.trim() ? "Limpiar busqueda" : "Cerrar busqueda"}
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

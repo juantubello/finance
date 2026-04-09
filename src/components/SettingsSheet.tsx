@@ -1,12 +1,35 @@
-import { useState } from "react";
-import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash, CreditCard, Bell } from "lucide-react";
+import { useMemo, useState } from "react";
+import { X, Tag, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, Loader2, Zap, Sun, Moon, Trash, CreditCard, Bell, Hash } from "lucide-react";
 import CardConfigSheet from "@/components/CardConfigSheet";
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryRules, useCreateCategoryRule, useDeleteCategoryRule, usePushSubscriptions, useSubscribePush, useUpdatePushSubscription, useDeletePushSubscription, useTestPushNotification } from "@/hooks/useApi";
-import type { CategoryResponse } from "@/types/api";
+import { toast } from "@/components/ui/sonner";
+import {
+  useCategories,
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory,
+  useCreateLabel,
+  useUpdateLabel,
+  useDeleteLabel,
+  useCategoryRules,
+  useCreateCategoryRule,
+  useDeleteCategoryRule,
+  useLabels,
+  useLabelRules,
+  useCreateLabelRule,
+  useUpdateLabelRule,
+  useDeleteLabelRule,
+  useApplyLabelRules,
+  usePushSubscriptions,
+  useSubscribePush,
+  useUpdatePushSubscription,
+  useDeletePushSubscription,
+  useTestPushNotification,
+} from "@/hooks/useApi";
+import type { CategoryResponse, Label, LabelRule } from "@/types/api";
 import type { Theme } from "@/App";
 import { getDeviceId, getAlias, getSubscriptionId, subscribePushNotifications, isPushSupported } from "@/lib/pushNotifications";
 
-type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm" | "notifications";
+type View = "main" | "categories" | "categoryForm" | "rules" | "ruleForm" | "labels" | "labelRules" | "labelRuleForm" | "notifications";
 
 interface Props {
   open: boolean;
@@ -26,6 +49,10 @@ const COLOR_PALETTE = [
   "#84cc16","#a855f7","#fb923c","#34d399","#60a5fa",
   "#f472b6","#facc15","#4ade80","#38bdf8","#c084fc",
 ];
+
+function normalizeLabelName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 function CategoryForm({ category, onBack }: CategoryFormProps) {
   const [name, setName] = useState(category?.name ?? "");
@@ -358,6 +385,513 @@ function RuleForm({ onBack }: { onBack: () => void }) {
   );
 }
 
+function LabelNameForm({
+  title,
+  initialName = "",
+  submitLabel,
+  onCancel,
+  onSave,
+  isSaving,
+  error,
+}: {
+  title: string;
+  initialName?: string;
+  submitLabel: string;
+  onCancel: () => void;
+  onSave: (name: string) => void | Promise<void>;
+  isSaving: boolean;
+  error: string | null;
+}) {
+  const [name, setName] = useState(initialName);
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-subtle">
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{title}</div>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Ej: helado"
+        className="w-full h-11 px-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+      />
+      {error && <div className="mt-2 text-xs text-red-500 font-medium bg-red-50 rounded-xl px-4 py-2">{error}</div>}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 h-10 rounded-xl bg-secondary text-sm font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => void onSave(name)}
+          disabled={isSaving}
+          className="flex-1 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+        >
+          {isSaving && <Loader2 size={14} className="animate-spin" />}
+          {submitLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LabelsView({ onBack }: { onBack: () => void }) {
+  const { data: labels = [], isLoading, error } = useLabels();
+  const createMut = useCreateLabel();
+  const updateMut = useUpdateLabel();
+  const deleteMut = useDeleteLabel();
+  const sortedLabels = useMemo(() => [...labels].sort((a, b) => a.name.localeCompare(b.name)), [labels]);
+  const [showNew, setShowNew] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<Label | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const resetForm = () => {
+    setShowNew(false);
+    setEditingLabel(null);
+    setFormError(null);
+  };
+
+  const handleCreate = async (rawName: string) => {
+    const name = normalizeLabelName(rawName);
+    if (!name) {
+      setFormError("Ingresá un nombre de etiqueta");
+      return;
+    }
+    setFormError(null);
+    try {
+      await createMut.mutateAsync({ name });
+      resetForm();
+      toast.success("Etiqueta creada.");
+    } catch (e: any) {
+      const message = e?.message ?? "";
+      setFormError(message.includes("409") ? "Ya existe una etiqueta con ese nombre" : "Error al crear la etiqueta");
+    }
+  };
+
+  const handleUpdate = async (rawName: string) => {
+    if (!editingLabel) return;
+    const name = normalizeLabelName(rawName);
+    if (!name) {
+      setFormError("Ingresá un nombre de etiqueta");
+      return;
+    }
+    setFormError(null);
+    try {
+      await updateMut.mutateAsync({ id: editingLabel.id, data: { name } });
+      resetForm();
+      toast.success("Etiqueta actualizada.");
+    } catch (e: any) {
+      const message = e?.message ?? "";
+      setFormError(message.includes("409") ? "Ya existe una etiqueta con ese nombre" : "Error al guardar la etiqueta");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMut.mutateAsync(id);
+      setConfirmDeleteId(null);
+      toast.success("Etiqueta eliminada.");
+    } catch {
+      toast.error("No se pudo eliminar la etiqueta.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronLeft size={14} /> Volver
+      </button>
+
+      {(showNew || editingLabel) && (
+        <LabelNameForm
+          key={editingLabel ? `edit-${editingLabel.id}` : "new-label"}
+          title={editingLabel ? "Editar etiqueta" : "Nueva etiqueta"}
+          initialName={editingLabel?.name ?? ""}
+          submitLabel={editingLabel ? "Guardar" : "Crear"}
+          onCancel={resetForm}
+          onSave={editingLabel ? handleUpdate : handleCreate}
+          isSaving={createMut.isPending || updateMut.isPending}
+          error={formError}
+        />
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-4">
+          <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Cargando etiquetas...</span>
+        </div>
+      ) : error ? (
+        <p className="text-sm text-red-500">Error al cargar etiquetas</p>
+      ) : sortedLabels.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4">No hay etiquetas</p>
+      ) : (
+        <div className="flex flex-col gap-2 max-h-[42vh] overflow-y-auto">
+          {sortedLabels.map((label) => (
+            <div key={label.id} className="flex items-center gap-3 rounded-xl bg-secondary px-3 py-2.5">
+              <span className="inline-flex items-center h-7 px-3 rounded-full bg-primary/12 text-[11px] font-semibold text-primary">
+                #{label.name}
+              </span>
+              <span className="text-xs text-muted-foreground flex-1">Etiqueta</span>
+              <button
+                onClick={() => {
+                  setEditingLabel(label);
+                  setShowNew(false);
+                  setFormError(null);
+                }}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              >
+                <Pencil size={14} className="text-muted-foreground" />
+              </button>
+              {confirmDeleteId === label.id ? (
+                <>
+                  <button
+                    onClick={() => void handleDelete(label.id)}
+                    disabled={deleteMut.isPending}
+                    className="p-1.5 rounded-lg bg-red-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    {deleteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : "Sí"}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <X size={14} className="text-muted-foreground" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteId(label.id)}
+                  className="p-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Trash2 size={14} className="text-red-400" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!showNew && !editingLabel && (
+        <button
+          onClick={() => {
+            setShowNew(true);
+            setEditingLabel(null);
+            setFormError(null);
+          }}
+          className="flex items-center justify-center gap-2 h-11 rounded-2xl border-2 border-dashed border-border hover:bg-secondary transition-colors text-sm font-medium text-muted-foreground"
+        >
+          <Plus size={16} />
+          Agregar etiqueta
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LabelRulesList({ onAdd, onEdit, onManageLabels }: { onAdd: () => void; onEdit: (rule: LabelRule) => void; onManageLabels: () => void }) {
+  const { data: rules = [], isLoading, error } = useLabelRules();
+  const deleteMut = useDeleteLabelRule();
+  const applyMut = useApplyLabelRules();
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const handleDelete = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await deleteMut.mutateAsync(id);
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  const handleApply = async () => {
+    try {
+      const res = await applyMut.mutateAsync();
+      toast.success(`Se actualizaron ${res.updated} gasto${res.updated === 1 ? "" : "s"}.`);
+    } catch {
+      toast.error("No se pudieron reaplicar las reglas.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground px-1">
+        Si la descripción contiene la palabra clave, se agregan automáticamente los labels asociados.
+      </p>
+
+      <button
+        onClick={onManageLabels}
+        className="flex items-center justify-center gap-2 h-11 rounded-2xl bg-secondary text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+      >
+        <Hash size={15} />
+        Gestionar etiquetas
+      </button>
+
+      <button
+        onClick={handleApply}
+        disabled={applyMut.isPending}
+        className="flex items-center justify-center gap-2 h-11 rounded-2xl bg-primary/10 text-primary text-sm font-semibold hover:bg-primary/15 transition-colors disabled:opacity-50"
+      >
+        {applyMut.isPending && <Loader2 size={15} className="animate-spin" />}
+        Reaplicar reglas
+      </button>
+
+      <div className="flex flex-col gap-2 max-h-[42vh] overflow-y-auto">
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4">
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Cargando...</span>
+          </div>
+        ) : error ? (
+          <p className="text-sm text-red-500">Error al cargar reglas de etiquetas</p>
+        ) : rules.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No hay reglas</p>
+        ) : (
+          rules.map((rule) => (
+            <div key={rule.id} className="rounded-xl bg-secondary px-3 py-2.5">
+              <div className="flex items-start gap-3">
+                <span className="text-xs font-bold text-foreground flex-shrink-0 font-mono bg-background px-2 py-0.5 rounded-lg">
+                  {rule.keyword}
+                </span>
+                <span className="text-muted-foreground text-xs pt-1">→</span>
+                <div className="flex-1 min-w-0 flex flex-wrap gap-1.5">
+                  {rule.labels.map((label) => (
+                    <span key={`${rule.id}-${label.id}`} className="inline-flex items-center h-6 px-2 rounded-full bg-primary/12 text-[10px] font-semibold text-primary">
+                      #{label.name}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => onEdit(rule)}
+                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <Pencil size={14} className="text-muted-foreground" />
+                  </button>
+                  {confirmDeleteId === rule.id ? (
+                    <>
+                      <button
+                        onClick={() => handleDelete(rule.id)}
+                        disabled={deletingId === rule.id}
+                        className="p-1.5 rounded-lg bg-red-500 text-white transition-colors disabled:opacity-50"
+                      >
+                        {deletingId === rule.id ? <Loader2 size={14} className="animate-spin" /> : "Sí"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                      >
+                        <X size={14} className="text-muted-foreground" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(rule.id)}
+                      className="p-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      <Trash2 size={14} className="text-red-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <button
+        onClick={onAdd}
+        className="flex items-center justify-center gap-2 h-11 rounded-2xl border-2 border-dashed border-border hover:bg-secondary transition-colors text-sm font-medium text-muted-foreground"
+      >
+        <Plus size={16} />
+        Agregar regla de etiquetas
+      </button>
+    </div>
+  );
+}
+
+function LabelRuleForm({ rule, onBack }: { rule: LabelRule | null; onBack: () => void }) {
+  const { data: labels = [], isLoading } = useLabels();
+  const createMut = useCreateLabelRule();
+  const updateMut = useUpdateLabelRule();
+  const createLabelMut = useCreateLabel();
+  const [keyword, setKeyword] = useState(rule?.keyword ?? "");
+  const [selectedLabelIds, setSelectedLabelIds] = useState<number[]>(rule?.labels.map((label) => label.id) ?? []);
+  const [error, setError] = useState<string | null>(null);
+  const [showNewLabelForm, setShowNewLabelForm] = useState(false);
+  const [labelFormError, setLabelFormError] = useState<string | null>(null);
+
+  const selectedLabels = labels.filter((label) => selectedLabelIds.includes(label.id));
+
+  const toggleLabel = (labelId: number) => {
+    setSelectedLabelIds((prev) =>
+      prev.includes(labelId) ? prev.filter((id) => id !== labelId) : [...prev, labelId]
+    );
+  };
+
+  const handleCreateInlineLabel = async (rawName: string) => {
+    const name = normalizeLabelName(rawName);
+    if (!name) {
+      setLabelFormError("Ingresá un nombre de etiqueta");
+      return;
+    }
+    setLabelFormError(null);
+    try {
+      const created = await createLabelMut.mutateAsync({ name });
+      setSelectedLabelIds((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]));
+      setShowNewLabelForm(false);
+      toast.success("Etiqueta creada.");
+    } catch (e: any) {
+      const message = e?.message ?? "";
+      setLabelFormError(message.includes("409") ? "Ya existe una etiqueta con ese nombre" : "Error al crear la etiqueta");
+    }
+  };
+
+  const handleSave = async () => {
+    const trimmedKeyword = keyword.trim().toLowerCase();
+    if (!trimmedKeyword) {
+      setError("Ingresá una palabra clave");
+      return;
+    }
+    if (selectedLabelIds.length === 0) {
+      setError("Seleccioná al menos un label");
+      return;
+    }
+
+    setError(null);
+    const payload = { keyword: trimmedKeyword, labelIds: selectedLabelIds };
+
+    try {
+      if (rule) {
+        await updateMut.mutateAsync({ id: rule.id, data: payload });
+      } else {
+        await createMut.mutateAsync(payload);
+      }
+      onBack();
+    } catch (e: any) {
+      const message = e?.message ?? "";
+      if (message.includes("409") || message.toLowerCase().includes("conflict")) {
+        setError("Ya existe una regla para ese keyword");
+      } else {
+        setError("Error al guardar");
+      }
+    }
+  };
+
+  const isSaving = createMut.isPending || updateMut.isPending;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 mb-2">
+        <button onClick={onBack} className="p-2 rounded-full hover:bg-secondary transition-colors">
+          <ChevronLeft size={20} className="text-muted-foreground" />
+        </button>
+        <h3 className="text-base font-bold text-foreground flex-1">
+          {rule ? "Editar regla de etiquetas" : "Nueva regla de etiquetas"}
+        </h3>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Palabra clave</label>
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="Ej: arnaldo"
+          className="w-full h-11 px-4 rounded-xl bg-secondary text-foreground text-sm outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+        />
+        <p className="text-[10px] text-muted-foreground mt-1 px-1">Si la descripción contiene esta palabra, se agregan los labels elegidos.</p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium text-muted-foreground block">Labels</label>
+          {!showNewLabelForm && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowNewLabelForm(true);
+                setLabelFormError(null);
+              }}
+              className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              Crear etiqueta
+            </button>
+          )}
+        </div>
+        {selectedLabels.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedLabels.map((label) => (
+              <button
+                key={`selected-${label.id}`}
+                type="button"
+                onClick={() => toggleLabel(label.id)}
+                className="inline-flex items-center h-7 px-2.5 rounded-full bg-primary/12 text-[11px] font-semibold text-primary"
+              >
+                #{label.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {showNewLabelForm && (
+          <LabelNameForm
+            title="Nueva etiqueta"
+            submitLabel="Crear y usar"
+            onCancel={() => {
+              setShowNewLabelForm(false);
+              setLabelFormError(null);
+            }}
+            onSave={handleCreateInlineLabel}
+            isSaving={createLabelMut.isPending}
+            error={labelFormError}
+          />
+        )}
+        {isLoading ? (
+          <div className="flex items-center gap-2 h-11 px-4 rounded-xl bg-secondary">
+            <Loader2 size={14} className="animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Cargando labels...</span>
+          </div>
+        ) : labels.length === 0 ? (
+          <div className="rounded-xl bg-secondary px-4 py-3 text-sm text-muted-foreground">No hay labels disponibles.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2 rounded-2xl bg-secondary/60 p-3">
+            {labels.map((label) => {
+              const active = selectedLabelIds.includes(label.id);
+              return (
+                <button
+                  key={label.id}
+                  type="button"
+                  onClick={() => toggleLabel(label.id)}
+                  className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold transition-colors ${
+                    active ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  #{label.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {error && <div className="text-xs text-red-500 font-medium bg-red-50 rounded-xl px-4 py-2">{error}</div>}
+
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        className="h-12 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        {isSaving && <Loader2 size={15} className="animate-spin" />}
+        {rule ? "Guardar cambios" : "Guardar regla"}
+      </button>
+    </div>
+  );
+}
+
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 const ALIASES = ["JUAN", "CAMI"] as const;
@@ -587,11 +1121,13 @@ function PurgeButton() {
 export default function SettingsSheet({ open, onClose, theme, onThemeChange }: Props) {
   const [view, setView] = useState<View>("main");
   const [editingCategory, setEditingCategory] = useState<CategoryResponse | null>(null);
+  const [editingLabelRule, setEditingLabelRule] = useState<LabelRule | null>(null);
   const [cardConfigOpen, setCardConfigOpen] = useState(false);
 
   const handleClose = () => {
     setView("main");
     setEditingCategory(null);
+    setEditingLabelRule(null);
     onClose();
   };
 
@@ -601,6 +1137,9 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
     categoryForm: "",
     rules: "Reglas automáticas",
     ruleForm: "",
+    labels: "Etiquetas",
+    labelRules: "Reglas de etiquetas",
+    labelRuleForm: "",
     notifications: "",
   };
 
@@ -637,6 +1176,22 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
               >
                 <Zap size={20} className="text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground flex-1">Reglas automáticas</span>
+                <ChevronRight size={16} className="text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setView("labels")}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary transition-colors text-left"
+              >
+                <Hash size={20} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground flex-1">Etiquetas</span>
+                <ChevronRight size={16} className="text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setView("labelRules")}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary transition-colors text-left"
+              >
+                <Tag size={20} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground flex-1">Reglas automáticas de etiquetas</span>
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>
               <button
@@ -703,6 +1258,27 @@ export default function SettingsSheet({ open, onClose, theme, onThemeChange }: P
 
           {view === "notifications" && (
             <NotificationsView onBack={() => setView("main")} />
+          )}
+
+          {view === "labels" && (
+            <LabelsView onBack={() => setView("main")} />
+          )}
+
+          {view === "labelRules" && (
+            <div>
+              <button onClick={() => setView("main")} className="flex items-center gap-1 text-xs text-muted-foreground mb-4 hover:text-foreground transition-colors">
+                <ChevronLeft size={14} /> Volver
+              </button>
+              <LabelRulesList
+                onManageLabels={() => setView("labels")}
+                onAdd={() => { setEditingLabelRule(null); setView("labelRuleForm"); }}
+                onEdit={(rule) => { setEditingLabelRule(rule); setView("labelRuleForm"); }}
+              />
+            </div>
+          )}
+
+          {view === "labelRuleForm" && (
+            <LabelRuleForm rule={editingLabelRule} onBack={() => setView("labelRules")} />
           )}
         </div>
       </div>

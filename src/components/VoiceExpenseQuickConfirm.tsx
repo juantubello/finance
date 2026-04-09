@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useCreateGasto } from "@/hooks/useApi";
+import type { Label } from "@/types/api";
+import { api } from "@/services/api";
 
 export interface VoiceExpenseDraft {
   description: string;
@@ -12,6 +15,7 @@ export interface VoiceExpenseDraft {
   currencyId: number;
   currencyCode: string;
   currencySymbol: string;
+  labels?: Label[];
 }
 
 interface Props {
@@ -31,6 +35,7 @@ function todayLocalIsoAtNoon() {
 
 export default function VoiceExpenseQuickConfirm({ draft, onEdit, onDismiss, onSaved }: Props) {
   const createMut = useCreateGasto();
+  const queryClient = useQueryClient();
   const [secondsLeft, setSecondsLeft] = useState(10);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -47,7 +52,7 @@ export default function VoiceExpenseQuickConfirm({ draft, onEdit, onDismiss, onS
     setSubmitting(true);
     setError(null);
     try {
-      await createMut.mutateAsync({
+      const savedGasto = await createMut.mutateAsync({
         dateTime: todayLocalIsoAtNoon(),
         description: draft.description.trim(),
         amount: draft.amount,
@@ -55,6 +60,10 @@ export default function VoiceExpenseQuickConfirm({ draft, onEdit, onDismiss, onS
         currencyId: draft.currencyId,
         senderDeviceId: localStorage.getItem("deviceId"),
       });
+      if (uniqueLabels.length > 0) {
+        await api.addGastoLabels(savedGasto.id, uniqueLabels.map((label) => label.name));
+        await queryClient.invalidateQueries({ queryKey: ["gastos"] });
+      }
       onSaved();
     } catch {
       setError("No se pudo guardar.");
@@ -78,6 +87,14 @@ export default function VoiceExpenseQuickConfirm({ draft, onEdit, onDismiss, onS
   }, [draft, submitting]);
 
   const progress = useMemo(() => `${Math.max(0, (secondsLeft / 10) * 100)}%`, [secondsLeft]);
+  const uniqueLabels = useMemo(() => {
+    const seen = new Set<number>();
+    return (draft?.labels ?? []).filter((label) => {
+      if (seen.has(label.id)) return false;
+      seen.add(label.id);
+      return true;
+    });
+  }, [draft?.labels]);
 
   if (!draft) return null;
 
@@ -108,6 +125,15 @@ export default function VoiceExpenseQuickConfirm({ draft, onEdit, onDismiss, onS
             <p className="mt-1 text-[10px] font-medium text-muted-foreground">
               Moneda: {draft.currencyCode}
             </p>
+            {uniqueLabels.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {uniqueLabels.map((label) => (
+                  <span key={label.id} className="inline-flex items-center rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    #{label.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-end gap-2">

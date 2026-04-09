@@ -8,6 +8,7 @@ import type {
   CategoryCreateRequest,
   Label,
   CategoryRule,
+  LabelRule,
   IngresoResponse,
   IngresoCreateRequest,
   IncomeCategoryResponse,
@@ -142,6 +143,15 @@ export const api = {
   getLabels: (): Promise<Label[]> =>
     request<Label[]>("/labels"),
 
+  createLabel: (data: { name: string }) =>
+    request<Label>("/labels", { method: "POST", body: JSON.stringify(data) }),
+
+  updateLabel: (id: number, data: { name: string }) =>
+    request<Label>(`/labels/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteLabel: (id: number) =>
+    request<void>(`/labels/${id}`, { method: "DELETE" }),
+
   addGastoLabels: (gastoId: number, labels: string[]) =>
     request<{ gastoId: number; labels: Label[] }>(`/gastos/${gastoId}/labels`, {
       method: "POST",
@@ -162,6 +172,21 @@ export const api = {
 
   deleteCategoryRule: (id: number) =>
     request<void>(`/category-rules/${id}`, { method: "DELETE" }),
+
+  getLabelRules: (): Promise<LabelRule[]> =>
+    request<LabelRule[]>("/label-rules"),
+
+  createLabelRule: (data: { keyword: string; labelIds: number[] }) =>
+    request<LabelRule>("/label-rules", { method: "POST", body: JSON.stringify(data) }),
+
+  updateLabelRule: (id: number, data: { keyword: string; labelIds: number[] }) =>
+    request<LabelRule>(`/label-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteLabelRule: (id: number) =>
+    request<void>(`/label-rules/${id}`, { method: "DELETE" }),
+
+  applyLabelRules: () =>
+    request<{ updated: number }>("/label-rules/apply", { method: "POST" }),
 
   // ── Ingresos ────────────────────────────────────────────────────────────────
 

@@ -303,15 +303,31 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
   }, [filtered, hasActiveViewState, forexRates, dolarBlueRate]);
 
   const activeFeedback = useMemo(() => {
-    const chips: string[] = [];
-    for (const token of searchTokens) chips.push(token.raw);
-    if (activeCategories?.length) {
-      chips.push(activeCategories.length === 1 ? activeCategories[0].name : `${activeCategories.length} categorias`);
+    const chips: Array<{ key: string; label: string; color?: string }> = [];
+    for (const token of searchTokens) {
+      chips.push({ key: `search-${token.raw}`, label: token.raw });
     }
-    if (dateFrom || dateTo) chips.push(`${dateFrom || "inicio"} - ${dateTo || "hoy"}`);
-    if (sortOrder !== "none") chips.push(`Orden: ${SORT_LABELS[sortOrder]}`);
+    if (activeCategories?.length) {
+      if (activeCategories.length === 1) {
+        const activeCategory = activeCategories[0];
+        const color = activeCategory.id != null ? categoryColorMap.get(activeCategory.id) ?? undefined : undefined;
+        chips.push({
+          key: `category-${activeCategory.id ?? activeCategory.name}`,
+          label: activeCategory.name,
+          color,
+        });
+      } else {
+        chips.push({ key: "categories-multi", label: `${activeCategories.length} categorias` });
+      }
+    }
+    if (dateFrom || dateTo) {
+      chips.push({ key: "date-range", label: `${dateFrom || "inicio"} - ${dateTo || "hoy"}` });
+    }
+    if (sortOrder !== "none") {
+      chips.push({ key: "sort-order", label: `Orden: ${SORT_LABELS[sortOrder]}` });
+    }
     return chips;
-  }, [searchTokens, activeCategories, dateFrom, dateTo, sortOrder]);
+  }, [searchTokens, activeCategories, dateFrom, dateTo, sortOrder, categoryColorMap]);
 
   // Group filtered expenses by date
   const groupedFiltered = useMemo(() => {
@@ -595,28 +611,36 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
               {showChart ? "Ocultar grafico" : "Ver grafico"}
             </button>
           )}
-          {filteredTotal && (
-            <span className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold shadow-subtle ${
-              selectedSum !== null
-                ? "bg-primary/12 text-primary ring-1 ring-primary/20"
-                : "bg-white/90 text-foreground dark:bg-secondary/90"
-            }`}>
-              {filteredTotal.count} gasto{filteredTotal.count !== 1 ? "s" : ""} · ${filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
-            </span>
-          )}
-          {activeFeedback.slice(0, 4).map((chip) => (
-            <span key={chip} className="inline-flex items-center h-8 px-3 rounded-full bg-card/90 text-[11px] font-medium text-muted-foreground shadow-subtle">
-              {chip}
-            </span>
-          ))}
-          {hasActiveViewState && (
-            <button
-              onClick={clearAllFilters}
-              className="inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Limpiar
-            </button>
-          )}
+          <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:gap-2">
+            {filteredTotal && (
+              <span className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold shadow-subtle ${
+                hasActiveViewState
+                  ? "bg-foreground text-background"
+                  : "bg-white/90 text-foreground dark:bg-secondary/90"
+              }`}>
+                {filteredTotal.count} gasto{filteredTotal.count !== 1 ? "s" : ""} · ${filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
+              </span>
+            )}
+            {activeFeedback.slice(0, 4).map((chip) => (
+              <span
+                key={chip.key}
+                className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-medium shadow-subtle ${
+                  chip.color ? "text-slate-700" : "bg-card/90 text-muted-foreground"
+                }`}
+                style={chip.color ? { backgroundColor: chip.color } : undefined}
+              >
+                {chip.label}
+              </span>
+            ))}
+            {hasActiveViewState && (
+              <button
+                onClick={clearAllFilters}
+                className="inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Scrollable list ── */}
@@ -657,6 +681,36 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
             <SkeletonList />
           ) : (
             <div className="animate-fade-in space-y-1">
+              {hasActiveViewState && (
+                <div className="px-5 pb-2 flex flex-wrap items-center gap-2 lg:hidden">
+                  {filteredTotal && (
+                    <span className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold shadow-subtle ${
+                      hasActiveViewState
+                        ? "bg-foreground text-background"
+                        : "bg-white/90 text-foreground dark:bg-secondary/90"
+                    }`}>
+                      {filteredTotal.count} gasto{filteredTotal.count !== 1 ? "s" : ""} · ${filteredTotal.total.toLocaleString("es-AR", { minimumFractionDigits: 0 })} ARS
+                    </span>
+                  )}
+                  {activeFeedback.slice(0, 4).map((chip) => (
+                    <span
+                      key={chip.key}
+                      className={`inline-flex items-center h-8 px-3 rounded-full text-[11px] font-medium shadow-subtle ${
+                        chip.color ? "text-slate-700" : "bg-card/90 text-muted-foreground"
+                      }`}
+                      style={chip.color ? { backgroundColor: chip.color } : undefined}
+                    >
+                      {chip.label}
+                    </span>
+                  ))}
+                  <button
+                    onClick={clearAllFilters}
+                    className="inline-flex items-center h-8 px-3 rounded-full text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              )}
               {groupedFiltered.map(({ label, items, dayTotal }) => (
                 <div key={label}>
                   <div className="sticky top-0 z-10 px-5 py-2 flex items-center justify-between bg-transparent">

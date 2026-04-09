@@ -60,7 +60,7 @@ function ExpenseDetailSheet({ expense, statement, onClose }: {
               style={{ backgroundColor: expense.logoUrl ? "transparent" : categoryColor + "33" }}
             >
               {expense.logoUrl
-                ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1.5" />
+                ? <img src={expense.logoUrl} alt="" className="w-11 h-11 rounded-full object-cover" />
                 : expense.categoryIcon || "💳"
               }
             </div>
@@ -138,12 +138,18 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 px-5 py-3 active:bg-secondary/35 transition-colors text-left"
+      className="w-full flex items-center justify-between gap-3 px-5 py-2.5 active:bg-secondary/35 transition-colors text-left"
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="w-12 h-12 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border border-border/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 overflow-hidden ${
+            expense.logoUrl
+              ? "bg-transparent border-0 shadow-none"
+              : "bg-white dark:bg-neutral-800 border border-border/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          }`}
+        >
           {expense.logoUrl
-            ? <img src={expense.logoUrl} alt="" className="w-full h-full object-contain p-1" />
+            ? <img src={expense.logoUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
             : expense.categoryIcon
             ? <span>{expense.categoryIcon}</span>
             : <span className="text-muted-foreground/40">💳</span>
@@ -151,7 +157,7 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
         </div>
         <div className="min-w-0 space-y-0.5">
           <div className="flex items-center gap-1 flex-wrap mb-0.5">
-            <span className={`text-[9px] font-semibold px-1.5 py-px rounded-full ${
+            <span className={`text-[8px] font-semibold px-1.5 py-px rounded-full ${
               expense.cardholderName === "Juan"
                 ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
                 : expense.cardholderName === "Camila"
@@ -161,19 +167,19 @@ function CardExpenseRow({ expense, exchangeRateUsd, onClick }: { expense: CardEx
               {expense.cardholderName}
             </span>
             {expense.installmentNumber != null && expense.installmentTotal != null && (
-              <span className="text-[9px] font-semibold px-1.5 py-px rounded-full bg-primary/10 text-primary">
+              <span className="text-[8px] font-semibold px-1.5 py-px rounded-full bg-primary/10 text-primary">
                 {expense.installmentNumber}/{expense.installmentTotal}
               </span>
             )}
           </div>
-          <div className="text-[11px] text-muted-foreground truncate">{expense.categoryName ?? "Sin categoría"}</div>
-          <div className="text-[0.92rem] leading-[1.18] font-semibold text-foreground" style={descriptionClampStyle}>{expense.description}</div>
+          <div className="text-[10px] text-muted-foreground truncate">{expense.categoryName ?? "Sin categoría"}</div>
+          <div className="text-[0.86rem] leading-[1.16] font-semibold text-foreground" style={descriptionClampStyle}>{expense.description}</div>
         </div>
       </div>
       <div className="flex flex-col items-end flex-shrink-0 gap-1">
-        <span className="inline-flex items-center rounded-full px-2.5 py-1.5 text-[0.8rem] font-semibold tabular bg-white text-expense shadow-subtle dark:bg-secondary dark:text-expense">- {amountDisplay}</span>
+        <span className="inline-flex items-center rounded-full px-2.5 py-1.5 text-[0.76rem] font-semibold tabular bg-white text-expense shadow-subtle dark:bg-secondary dark:text-expense">- {amountDisplay}</span>
         {arsEquiv != null && (
-          <span className="text-[10px] text-muted-foreground tabular pr-1">
+          <span className="text-[9px] text-muted-foreground tabular pr-1">
             ≈ $ {(arsEquiv / 100).toLocaleString("es-AR", { minimumFractionDigits: 0 })}
           </span>
         )}

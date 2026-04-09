@@ -1,4 +1,4 @@
-import type { CategoryRule } from "@/types/api";
+import type { CategoryRule, Label, LabelRule } from "@/types/api";
 
 /**
  * Returns the first matching { categoryId, keyword } or null.
@@ -18,4 +18,28 @@ export function detectCategoryFromDescription(
     }
   }
   return null;
+}
+
+export function detectLabelsFromDescription(
+  description: string,
+  rules: LabelRule[],
+): Label[] {
+  if (!description.trim() || rules.length === 0) return [];
+
+  const collected: Label[] = [];
+  const seenIds = new Set<number>();
+
+  for (const rule of rules) {
+    const escaped = rule.keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    if (!re.test(description)) continue;
+
+    for (const label of rule.labels) {
+      if (seenIds.has(label.id)) continue;
+      seenIds.add(label.id);
+      collected.push(label);
+    }
+  }
+
+  return collected;
 }

@@ -27,6 +27,12 @@ export interface CategoryRule {
   categoryName: string;
 }
 
+export interface LabelRule {
+  id: number;
+  keyword: string;
+  labels: Label[];
+}
+
 export interface GastosByCategoryResponse {
   categoryId: number;
   categoryName: string;

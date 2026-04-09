@@ -26,11 +26,11 @@ import CardCategories from "./pages/CardCategories";
 import CardCategoryRules from "./pages/CardCategoryRules";
 import LogoRules from "./pages/LogoRules";
 import CardsList from "./pages/CardsList";
-import type { GastoResponse, IngresoResponse, SavingMovement } from "@/types/api";
+import type { GastoResponse, IngresoResponse, Label, SavingMovement } from "@/types/api";
 import { parseMultipleItems, parseVoiceInput } from "@/lib/voiceParser";
 import { getDeviceId, getAlias } from "@/lib/pushNotifications";
-import { useCategories, useCategoryRules, useCurrencies } from "@/hooks/useApi";
-import { detectCategoryFromDescription } from "@/lib/categoryRules";
+import { useCategories, useCategoryRules, useCurrencies, useLabelRules } from "@/hooks/useApi";
+import { detectCategoryFromDescription, detectLabelsFromDescription } from "@/lib/categoryRules";
 
 const queryClient = new QueryClient();
 
@@ -66,6 +66,7 @@ function AppLayout() {
   const [gastosSearchOpen, setGastosSearchOpen] = useState(false);
   const [ingresosSearchOpen, setIngresosSearchOpen] = useState(false);
   const [tarjetasSearchOpen, setTarjetasSearchOpen] = useState(false);
+  const [ahorrosSearchOpen, setAhorrosSearchOpen] = useState(false);
   const [voiceExpenseDraft, setVoiceExpenseDraft] = useState<VoiceExpenseDraft | null>(null);
 
   // ── Ingreso / Ahorro modal (shared) ───────────────────────────────────────
@@ -80,6 +81,7 @@ function AppLayout() {
   const [editMovimiento, setEditMovimiento] = useState<SavingMovement | null>(null);
   const { data: categories = [] } = useCategories();
   const { data: categoryRules = [] } = useCategoryRules();
+  const { data: labelRules = [] } = useLabelRules();
   const { data: currencies = [] } = useCurrencies();
 
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -87,6 +89,7 @@ function AppLayout() {
     if (location.pathname !== "/") setGastosSearchOpen(false);
     if (location.pathname !== "/ingresos") setIngresosSearchOpen(false);
     if (location.pathname !== "/tarjetas") setTarjetasSearchOpen(false);
+    if (location.pathname !== "/ahorros") setAhorrosSearchOpen(false);
   }, [location.pathname]);
 
   // Push notification re-registration alert
@@ -127,6 +130,7 @@ function AppLayout() {
     const description = parsed.description || transcript;
     const amount = parsed.amount ?? undefined;
     const autoCategory = detectCategoryFromDescription(description, categoryRules);
+    const autoLabels: Label[] = detectLabelsFromDescription(description, labelRules);
     const arsCurrency = currencies.find(c => c.symbol === "$" || c.name.toUpperCase().includes("ARS") || c.name.toLowerCase().includes("peso"));
     const matchedCategory = autoCategory ? categories.find(c => c.id === autoCategory.categoryId) : null;
 
@@ -141,6 +145,7 @@ function AppLayout() {
         currencyId: arsCurrency.id,
         currencyCode: "ARS",
         currencySymbol: arsCurrency.symbol,
+        labels: autoLabels,
       });
       return;
     }
@@ -187,7 +192,7 @@ function AppLayout() {
         <Route path="/cards/config/category-rules" element={<CardCategoryRules />} />
         <Route path="/cards/config/logo-rules" element={<LogoRules />} />
         <Route path="/cards/config/cards" element={<CardsList />} />
-        <Route path="/ahorros" element={<Ahorros onEditMovimiento={openAhorroEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
+        <Route path="/ahorros" element={<Ahorros onEditMovimiento={openAhorroEdit} onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} searchOpen={ahorrosSearchOpen} onSearchOpenChange={setAhorrosSearchOpen} />} />
         <Route path="/estadisticas" element={<Estadisticas onMenu={() => setSideMenuOpen(true)} onSettings={() => setSettingsOpen(true)} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
@@ -208,7 +213,7 @@ function AppLayout() {
       <FloatingActionButton
         onAdd={handleAdd}
         onVoice={() => setVoiceAddOpen(true)}
-        showSearch={location.pathname === "/" || location.pathname === "/ingresos" || location.pathname === "/tarjetas"}
+        showSearch={location.pathname === "/" || location.pathname === "/ingresos" || location.pathname === "/tarjetas" || location.pathname === "/ahorros"}
         searchActive={
           location.pathname === "/"
             ? gastosSearchOpen
@@ -216,12 +221,15 @@ function AppLayout() {
             ? ingresosSearchOpen
             : location.pathname === "/tarjetas"
             ? tarjetasSearchOpen
+            : location.pathname === "/ahorros"
+            ? ahorrosSearchOpen
             : false
         }
         onSearchToggle={() => {
           if (location.pathname === "/") setGastosSearchOpen(v => !v);
           if (location.pathname === "/ingresos") setIngresosSearchOpen(v => !v);
           if (location.pathname === "/tarjetas") setTarjetasSearchOpen(v => !v);
+          if (location.pathname === "/ahorros") setAhorrosSearchOpen(v => !v);
         }}
       />
       <ExpenseModal key={`gasto-${gastoModalKey}`} open={gastoModalOpen} onClose={closeGasto} gasto={editGasto} initialData={initialData} initialEntryType={initialEntryType} />
