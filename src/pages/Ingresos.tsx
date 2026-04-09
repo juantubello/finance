@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
 import { useNavigate } from "react-router-dom";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 import { useIngresos, useIngresosForYear, useIncomeCategories, useAvailable, useGastos, useGastosForYear, useDolarBlue, useUSDCARS } from "@/hooks/useApi";
 import DateFilter, { type FilterMode } from "@/components/DateFilter";
 import SkeletonList from "@/components/SkeletonList";
@@ -163,7 +164,10 @@ export default function Ingresos({ onEditIngreso, onMenu, onSettings, filterMode
 
             <div className="flex rounded-full border border-border/50 bg-secondary/60 p-0.5 overflow-hidden w-full max-w-xs">
               <button
-                onClick={() => navigate("/")}
+                onClick={() => {
+                  triggerSelectionHaptic();
+                  navigate("/");
+                }}
                 style={{ flexGrow: pillReady ? 38 : 50, transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)" }}
                 className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 text-muted-foreground/70 hover:text-foreground transition-colors"
               >

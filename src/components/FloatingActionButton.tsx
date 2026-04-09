@@ -1,4 +1,5 @@
 import { Plus, Mic, Search } from "lucide-react";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 
 interface Props {
   onAdd: () => void;
@@ -14,7 +15,10 @@ export default function FloatingActionButton({ onAdd, onVoice, showSearch = fals
       <div className="max-w-5xl mx-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+18px)] flex items-end justify-between">
         <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/70 bg-card/80 p-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-card/85">
           <button
-            onClick={onAdd}
+            onClick={() => {
+              triggerSelectionHaptic();
+              onAdd();
+            }}
             className="flex items-center justify-center w-11 h-11 rounded-full bg-white/70 text-foreground hover:bg-white dark:bg-secondary/90 dark:hover:bg-secondary active:scale-95 transition-all"
             aria-label="Agregar manualmente"
           >
@@ -22,7 +26,10 @@ export default function FloatingActionButton({ onAdd, onVoice, showSearch = fals
           </button>
           {showSearch && (
             <button
-              onClick={onSearchToggle}
+              onClick={() => {
+                triggerSelectionHaptic();
+                onSearchToggle?.();
+              }}
               className={`flex lg:hidden items-center justify-center w-11 h-11 rounded-full active:scale-95 transition-all ${
                 searchActive
                   ? "bg-foreground text-background shadow-subtle"
@@ -36,7 +43,10 @@ export default function FloatingActionButton({ onAdd, onVoice, showSearch = fals
         </div>
 
         <button
-          onClick={onVoice}
+          onClick={() => {
+            triggerSelectionHaptic();
+            onVoice();
+          }}
           className="pointer-events-auto w-14 h-14 rounded-full border border-[#ff5c4d] bg-[#ff5c4d] shadow-[0_4px_10px_rgba(15,23,42,0.10)] flex items-center justify-center hover:bg-[#f45142] active:scale-95 transition-all"
           aria-label="Agregar por voz"
         >

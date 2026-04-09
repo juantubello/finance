@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Check, Mic, RotateCcw } from "lucide-react";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 
 interface Props {
   open: boolean;
@@ -93,11 +94,13 @@ export default function VoiceOverlay({ open, onCancel, onConfirm }: Props) {
   }, [open]);
 
   const handleCancel = () => {
+    triggerSelectionHaptic();
     stopRecognition();
     onCancel();
   };
 
   const handleConfirm = () => {
+    triggerSelectionHaptic();
     stopRecognition();
     onConfirm(displayText);
   };
@@ -141,7 +144,10 @@ export default function VoiceOverlay({ open, onCancel, onConfirm }: Props) {
         {/* Re-record (center, only when done) */}
         {isDone && (
           <button
-            onClick={startRecognition}
+            onClick={() => {
+              triggerSelectionHaptic();
+              startRecognition();
+            }}
             className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center active:scale-95 transition-transform"
           >
             <RotateCcw size={18} className="text-white" />

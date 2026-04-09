@@ -24,6 +24,7 @@ import type { GastoResponse } from "@/types/api";
 import { Search, BarChart2, List, ChevronDown, X, SlidersHorizontal } from "lucide-react";
 import { usePrivacyMode } from "@/hooks/usePrivacyMode";
 import PrivacyToggle from "@/components/PrivacyToggle";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 
 const SORT_LABELS = {
   none: "Predeterminado",
@@ -450,7 +451,10 @@ export default function Index({ onEditGasto, onMenu, onSettings, filterMode, yea
                     : "— Gastos"}
                 </button>
                 <button
-                  onClick={() => navigate("/ingresos")}
+                  onClick={() => {
+                    triggerSelectionHaptic();
+                    navigate("/ingresos");
+                  }}
                   style={{ flexGrow: pillReady ? 38 : 50, transition: "flex-grow 0.45s cubic-bezier(0.16,1,0.3,1)" }}
                   className="py-2 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0 min-w-0 text-muted-foreground/70 hover:text-foreground transition-colors"
                 >

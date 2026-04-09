@@ -7,6 +7,7 @@ import { useCategories, useCurrencies, useCreateGasto, useUpdateGasto, useDelete
 import { parseVoiceInput, parseMultipleItems } from "@/lib/voiceParser";
 import VoiceOverlay from "@/components/VoiceOverlay";
 import { detectCategoryFromDescription, detectLabelsFromDescription } from "@/lib/categoryRules";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 import { api } from "@/services/api";
 
 type EntryType = "gasto" | "ingreso" | "ahorro";
@@ -280,6 +281,13 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
 
   const typeLabel = entryType === "gasto" ? "−" : entryType === "ingreso" ? "+" : "🐷";
 
+  const handleEntryTypeChange = (next: EntryType) => {
+    if (gasto) return;
+    setEntryType(next);
+    setCategoryId(next === "ingreso" ? 11 : next === "ahorro" ? 12 : null);
+    setAutoCategoryKeyword(null);
+  };
+
   return (
     <>
       <VoiceOverlay
@@ -331,15 +339,18 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
               {!gasto && (
                 <>
                   <button
+                    type="button"
                     onClick={() => { setEntryType("gasto"); setCategoryId(null); setAutoCategoryKeyword(null); }}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "gasto" ? "bg-[#ff5c4d] text-white" : "bg-secondary text-muted-foreground"}`}
                   >— Egreso</button>
                   <button
+                    type="button"
                     onClick={() => { setEntryType("ingreso"); setCategoryId(11); setAutoCategoryKeyword(null); }}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "ingreso" ? "bg-emerald-500 text-white" : "bg-secondary text-muted-foreground"}`}
                   >+ Ingreso</button>
                   <button
-                    onClick={() => { setEntryType("ahorro"); setCategoryId(12); setAutoCategoryKeyword(null); }}
+                    type="button"
+                    onClick={() => handleEntryTypeChange("ahorro")}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${entryType === "ahorro" ? "bg-blue-500 text-white" : "bg-secondary text-muted-foreground"}`}
                   >🐷 Ahorro</button>
                 </>
@@ -403,9 +414,7 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
                 onClick={() => {
                   if (gasto) return;
                   const next: EntryType = entryType === "gasto" ? "ingreso" : entryType === "ingreso" ? "ahorro" : "gasto";
-                  setEntryType(next);
-                  setCategoryId(next === "ingreso" ? 11 : next === "ahorro" ? 12 : null);
-                  setAutoCategoryKeyword(null);
+                  handleEntryTypeChange(next);
                 }}
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 transition-all active:scale-90 ${typeColor}`}
               >
@@ -449,7 +458,12 @@ function ExpenseModalInner({ onClose, gasto, initialData, initialEntryType }: Om
                     {categories.map(c => (
                       <button
                         key={c.id}
-                        onClick={() => { categoryManuallySet.current = true; setCategoryId(c.id != null && categoryId === c.id ? null : c.id); setAutoCategoryKeyword(null); }}
+                        onClick={() => {
+                          triggerSelectionHaptic();
+                          categoryManuallySet.current = true;
+                          setCategoryId(c.id != null && categoryId === c.id ? null : c.id);
+                          setAutoCategoryKeyword(null);
+                        }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                           c.id != null && categoryId === c.id
                             ? "bg-primary text-primary-foreground shadow-subtle"
