@@ -202,8 +202,9 @@ function groupByDate(expenses: CardExpense[]) {
     const label =
       d.getTime() === today.getTime() ? "hoy" :
       d.getTime() === yesterday.getTime() ? "ayer" :
-      format(d, "d 'de' MMMM", { locale: es });
-    return { label, items };
+      d.getFullYear() === today.getFullYear() ? format(d, "d 'de' MMMM", { locale: es }) :
+      format(d, "d 'de' MMMM yyyy", { locale: es });
+    return { key, label, items };
   });
 }
 
@@ -770,8 +771,8 @@ export default function Tarjetas({ onMenu, onSettings, filterMode, year, month, 
               <p className="text-center text-sm text-muted-foreground py-12">No hay gastos con los filtros aplicados.</p>
             ) : (
               <div className="animate-fade-in">
-                {groupByDate(filtered).map(({ label, items }) => (
-                  <div key={label}>
+                {groupByDate(filtered).map(({ key, label, items }) => (
+                  <div key={key}>
                     <div className="sticky top-0 z-10 px-5 py-2 flex items-center justify-between bg-transparent">
                       <span className="inline-flex items-center h-7 px-2.5 rounded-full bg-card/90 text-[10px] font-medium lowercase text-muted-foreground shadow-subtle dark:bg-secondary/90">{label}</span>
                     </div>
